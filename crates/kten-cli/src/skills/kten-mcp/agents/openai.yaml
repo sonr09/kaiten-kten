@@ -1,0 +1,4 @@
+interface:
+  display_name: "KTEN MCP"
+  short_description: "Configure Kaiten access via MCP"
+  default_prompt: "Use $kten-mcp to configure a local kten MCP server for an AI client."

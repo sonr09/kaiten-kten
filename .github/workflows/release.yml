@@ -1,0 +1,70 @@
+name: Release macOS ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish Apple Silicon binary
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      TARGET: aarch64-apple-darwin
+      ARCHIVE: kten-aarch64-apple-darwin.tar.gz
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup target add "$TARGET" --toolchain 1.95.0
+
+      - name: Build release binary
+        run: cargo build --locked --release --package kten-cli --bin kten --target "$TARGET"
+
+      - name: Verify architecture
+        run: file "target/$TARGET/release/kten" | grep -q "arm64"
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp "target/$TARGET/release/kten" dist/kten
+          cp LICENSE dist/LICENSE
+          tar -C dist -czf "$ARCHIVE" kten LICENSE
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: kten-aarch64-apple-darwin
+          path: |
+            kten-aarch64-apple-darwin.tar.gz
+            kten-aarch64-apple-darwin.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Ensure GitHub CLI is available
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: command -v gh >/dev/null || brew install gh
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ARCHIVE" "$ARCHIVE.sha256" \
+              --verify-tag \
+              --generate-notes \
+              --title "kten $GITHUB_REF_NAME"
+          fi

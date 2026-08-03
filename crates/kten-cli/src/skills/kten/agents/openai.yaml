@@ -1,0 +1,4 @@
+interface:
+  display_name: "KTEN"
+  short_description: "Use the Kaiten CLI"
+  default_prompt: "Use $kten to inspect or create Kaiten cards and inspect comments, spaces, or boards."
