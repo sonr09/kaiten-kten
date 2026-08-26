@@ -357,6 +357,44 @@ fn card_view_json_uses_read_only_http_get() {
 }
 
 #[test]
+fn card_update_patches_description_and_supports_clearing() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(PATCH)
+            .path("/cards/123")
+            .json_body_obj(&serde_json::json!({"description": "Updated"}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "description": "Updated"
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "update",
+            "123",
+            "--description",
+            "Updated",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("\"description\": \"Updated\"")
+    );
+    assert_eq!(mock.calls(), 1);
+}
+
+#[test]
 fn card_create_posts_required_fields_and_prints_created_card() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {

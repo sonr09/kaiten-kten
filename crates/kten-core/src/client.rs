@@ -10,7 +10,7 @@ use crate::{
     limits::{LimitKind, Limits},
     models::{
         Board, BoardStructure, Card, CardContext, Column, Comment, CreateCardRequest, CurrentUser,
-        Lane, MineCardsFilters, SearchFilters, Space,
+        Lane, MineCardsFilters, SearchFilters, Space, UpdateCardDescriptionRequest,
     },
 };
 
@@ -63,6 +63,18 @@ impl KaitenClient {
 
     pub async fn create_card(&self, request: &CreateCardRequest) -> Result<Card> {
         self.post_json("cards", request).await
+    }
+
+    pub async fn update_card_description(
+        &self,
+        card_id: u64,
+        description: Option<String>,
+    ) -> Result<Card> {
+        self.patch_json(
+            &format!("cards/{card_id}"),
+            &UpdateCardDescriptionRequest { description },
+        )
+        .await
     }
 
     pub async fn comments(&self, card_id: u64, limit: u32) -> Result<Vec<Comment>> {
@@ -201,6 +213,28 @@ impl KaitenClient {
         let response = self
             .http
             .post(url)
+            .bearer_auth(&self.config.token)
+            .json(body)
+            .send()
+            .await?;
+        if response.status().is_success() {
+            Ok(response.json().await?)
+        } else {
+            Err(api_error(response).await)
+        }
+    }
+
+    async fn patch_json<B, T>(&self, path: &str, body: &B) -> Result<T>
+    where
+        B: serde::Serialize + ?Sized,
+        T: serde::de::DeserializeOwned,
+    {
+        let url = self.url(path, &[])?;
+        let _permit = self.throttle.lock().await;
+        tokio::time::sleep(Duration::from_millis(210)).await;
+        let response = self
+            .http
+            .patch(url)
             .bearer_auth(&self.config.token)
             .json(body)
             .send()
@@ -394,6 +428,42 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, Error::Api { status: 429, .. }));
         assert_eq!(mock.calls(), 1);
+        unsafe {
+            std::env::remove_var("KTEN_TEST_API_BASE");
+        }
+    }
+
+    #[tokio::test]
+    async fn update_card_description_patches_text_or_null() {
+        let _guard = env_lock().lock().unwrap();
+        let server = MockServer::start();
+        let text_mock = server.mock(|when, then| {
+            when.method(PATCH)
+                .path("/cards/7")
+                .json_body_obj(&serde_json::json!({"description": "Updated"}));
+            then.status(200)
+                .json_body_obj(&serde_json::json!({"id": 7, "description": "Updated"}));
+        });
+        let card = client(&server)
+            .update_card_description(7, Some("Updated".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(card.description.as_deref(), Some("Updated"));
+        assert_eq!(text_mock.calls(), 1);
+
+        let clear_mock = server.mock(|when, then| {
+            when.method(PATCH)
+                .path("/cards/8")
+                .json_body_obj(&serde_json::json!({"description": null}));
+            then.status(200)
+                .json_body_obj(&serde_json::json!({"id": 8, "description": null}));
+        });
+        let card = client(&server)
+            .update_card_description(8, None)
+            .await
+            .unwrap();
+        assert_eq!(card.description, None);
+        assert_eq!(clear_mock.calls(), 1);
         unsafe {
             std::env::remove_var("KTEN_TEST_API_BASE");
         }

@@ -46,6 +46,11 @@ pub struct CreateCardRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateCardDescriptionRequest {
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CurrentUser {
     pub id: u64,
     #[serde(default)]

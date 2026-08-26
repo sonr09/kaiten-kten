@@ -130,6 +130,13 @@ enum CardCommand {
         #[arg(long)]
         json: bool,
     },
+    Update {
+        id: u64,
+        #[arg(long, help = "Card description; pass an empty string to clear it")]
+        description: String,
+        #[arg(long)]
+        json: bool,
+    },
     View {
         id: u64,
         #[arg(long)]
@@ -603,6 +610,20 @@ async fn run_card(
         }
         CardCommand::View { id, json } => {
             let card = client.card(id).await?;
+            print_data(
+                json,
+                || render::card_human(&card, &effective.card_url(id)),
+                &card,
+            )
+        }
+        CardCommand::Update {
+            id,
+            description,
+            json,
+        } => {
+            let card = client
+                .update_card_description(id, (!description.is_empty()).then_some(description))
+                .await?;
             print_data(
                 json,
                 || render::card_human(&card, &effective.card_url(id)),
