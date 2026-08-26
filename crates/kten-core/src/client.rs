@@ -9,8 +9,9 @@ use crate::{
     config::EffectiveConfig,
     limits::{LimitKind, Limits},
     models::{
-        Board, BoardStructure, Card, CardContext, Column, Comment, CreateCardRequest, CurrentUser,
-        Lane, MineCardsFilters, SearchFilters, Space, UpdateCardDescriptionRequest,
+        AddCardMemberRequest, Board, BoardStructure, Card, CardContext, CardMember, Column,
+        Comment, CreateCardRequest, CurrentUser, Lane, MineCardsFilters, SearchFilters, Space,
+        UpdateCardDescriptionRequest,
     },
 };
 
@@ -73,6 +74,14 @@ impl KaitenClient {
         self.patch_json(
             &format!("cards/{card_id}"),
             &UpdateCardDescriptionRequest { description },
+        )
+        .await
+    }
+
+    pub async fn add_card_member(&self, card_id: u64, user_id: u64) -> Result<CardMember> {
+        self.post_json(
+            &format!("cards/{card_id}/members"),
+            &AddCardMemberRequest { user_id },
         )
         .await
     }

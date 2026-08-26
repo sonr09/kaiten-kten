@@ -395,6 +395,37 @@ fn card_update_patches_description_and_supports_clearing() {
 }
 
 #[test]
+fn card_member_add_posts_user_id_and_prints_member() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/members")
+            .json_body_obj(&serde_json::json!({"user_id": 42}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 42,
+            "full_name": "Ada Lovelace",
+            "username": "ada",
+            "email": "ada@example.com",
+            "type": 1
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "member", "add", "123", "--user", "42", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\"id\": 42"));
+    assert!(stdout.contains("\"type\": 1"));
+    assert_eq!(mock.calls(), 1);
+}
+
+#[test]
 fn card_create_posts_required_fields_and_prints_created_card() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {

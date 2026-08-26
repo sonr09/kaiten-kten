@@ -94,6 +94,7 @@ kten card view 12345 --json
 kten card create --title "Fix login" --board 34
 kten card update 12345 --description "Updated acceptance criteria"
 kten card update 12345 --description "" # clear description
+kten card member add 12345 --user 42
 kten card create --title "Fix login" --board 34 --column 56 --lane 78 --responsible 90 --json
 kten card context 12345 --comments-limit 20
 kten card comments 12345 --limit 10 --json
@@ -131,8 +132,9 @@ operations for spaces, boards, columns, lanes, cards, comments, users, groups,
 roles, tags, card types, custom properties, checklists, files, time logs,
 service desks, automations, audit logs, webhooks, and other product areas.
 
-`kten` intentionally exposes only a focused subset. Card creation and card
-description updates are its supported write operations; all other commands are
+`kten` intentionally exposes only a focused subset. Card creation, card
+description updates, and adding card members are its supported write operations;
+all other commands are
 read-only:
 
 | `kten` feature | Kaiten API request |
@@ -141,6 +143,7 @@ read-only:
 | Card view | `GET /cards/{card_id}` |
 | Card creation | `POST /cards` |
 | Card description update | `PATCH /cards/{card_id}` |
+| Add card member | `POST /cards/{card_id}/members` |
 | Card search | `GET /cards` |
 | My cards | `GET /users/current` and `GET /cards` |
 | Card context | `GET /cards/{card_id}` and `GET /cards/{card_id}/comments` |
@@ -275,7 +278,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Card creation and card description updates are the supported Kaiten write operations. `kten` does not
+Card creation, card description updates, and adding card members are the supported Kaiten write operations. `kten` does not
 automatically retry creation requests because a retry could create a duplicate.
 It has no telemetry and no crates.io publishing configuration.
 

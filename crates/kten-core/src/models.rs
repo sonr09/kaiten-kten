@@ -51,6 +51,24 @@ pub struct UpdateCardDescriptionRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AddCardMemberRequest {
+    pub user_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CardMember {
+    pub id: u64,
+    #[serde(default)]
+    pub full_name: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default, rename = "type")]
+    pub member_type: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CurrentUser {
     pub id: u64,
     #[serde(default)]

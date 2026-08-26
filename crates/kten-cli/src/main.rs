@@ -130,6 +130,10 @@ enum CardCommand {
         #[arg(long)]
         json: bool,
     },
+    Member {
+        #[command(subcommand)]
+        command: CardMemberCommand,
+    },
     Update {
         id: u64,
         #[arg(long, help = "Card description; pass an empty string to clear it")]
@@ -165,6 +169,17 @@ enum CardCommand {
         limit: Option<u32>,
         #[arg(long, default_value_t = 0)]
         offset: u32,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum CardMemberCommand {
+    Add {
+        id: u64,
+        #[arg(long, help = "User ID to add as a card member")]
+        user: u64,
         #[arg(long)]
         json: bool,
     },
@@ -608,6 +623,12 @@ async fn run_card(
                 &card,
             )
         }
+        CardCommand::Member { command } => match command {
+            CardMemberCommand::Add { id, user, json } => {
+                let member = client.add_card_member(id, user).await?;
+                print_data(json, || render::card_member_human(id, &member), &member)
+            }
+        },
         CardCommand::View { id, json } => {
             let card = client.card(id).await?;
             print_data(
