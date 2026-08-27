@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-use crate::models::{Board, BoardStructure, Card, CardContext, Column, Comment, Lane, Space};
+use crate::models::{
+    Board, BoardStructure, Card, CardContext, CardMember, Column, Comment, Lane, Space,
+};
 
 pub fn card_human(card: &Card, url: &str) -> String {
     let title = card.title.as_deref().unwrap_or("(untitled)");
@@ -9,6 +11,15 @@ pub fn card_human(card: &Card, url: &str) -> String {
         "Card #{}\nTitle: {title}\nURL: {url}\nDescription:\n{description}\n",
         card.id
     )
+}
+
+pub fn card_member_human(card_id: u64, member: &CardMember) -> String {
+    let name = member
+        .full_name
+        .as_deref()
+        .or(member.username.as_deref())
+        .unwrap_or("(unnamed)");
+    format!("Added member #{}, {name}, to card #{card_id}.\n", member.id)
 }
 
 pub fn comments_human(comments: &[Comment]) -> String {

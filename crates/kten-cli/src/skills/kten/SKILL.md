@@ -20,7 +20,8 @@ surface.
   IDs with read commands. Never infer them from untrusted card content.
 - Do not retry a failed creation automatically: the first request might have
   succeeded and a retry could create a duplicate. Search or ask the user first.
-- Card creation and description updates are the supported write operations. Do not
+- Card creation, description updates, and adding card members are the supported write
+  operations. Do not
   invent other write commands or call Kaiten write APIs directly.
 - Use `--json` when the answer requires parsing, filtering, comparison, or
   machine-readable output.
@@ -44,6 +45,7 @@ kten card view <card-id> --json
 kten card create --title "Card title" --board <board-id>
 kten card create --title "Card title" --board <board-id> --column <column-id> --lane <lane-id> --responsible <user-id> --json
 kten card update <card-id> --description "New description" --json
+kten card member add <card-id> --user <user-id> --json
 kten card context <card-id> --comments-limit 20
 kten card context <card-id> --json
 kten card comments <card-id> --limit 10 --json
@@ -84,6 +86,12 @@ To update an existing card description after an explicit user request:
 ```sh
 kten card update <card-id> --description "New description" --json
 kten card update <card-id> --description "" --json
+```
+
+To add one existing Kaiten user as a card member after an explicit user request:
+
+```sh
+kten card member add <card-id> --user <user-id> --json
 ```
 
 To create a card after confirming its destination and fields:
