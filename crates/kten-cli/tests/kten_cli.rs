@@ -395,6 +395,44 @@ fn card_update_patches_description_and_supports_clearing() {
 }
 
 #[test]
+fn card_update_sets_and_clears_high_priority() {
+    for (priority, asap) in [("high", true), ("normal", false)] {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(PATCH)
+                .path("/cards/123")
+                .json_body_obj(&serde_json::json!({"asap": asap}));
+            then.status(200).json_body_obj(&serde_json::json!({
+                "id": 123,
+                "title": "Fix login",
+                "asap": asap
+            }));
+        });
+
+        let mut args = vec!["card", "update", "123", "--priority", priority];
+        if !asap {
+            args.push("--json");
+        }
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(args)
+            .output()
+            .unwrap();
+
+        assert!(output.status.success(), "{}", stderr(&output));
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        if asap {
+            assert!(stdout.contains("Priority: High"));
+        } else {
+            assert!(stdout.contains("\"asap\": false"));
+        }
+        assert_eq!(mock.calls(), 1);
+    }
+}
+
+#[test]
 fn card_member_add_posts_user_id_and_prints_member() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {

@@ -9,7 +9,7 @@ use dialoguer::{Input, Password};
 use kten_core::{
     CliConfigOverrides, Config, ConfigPaths, EditableConfigKey, EffectiveConfig, Error,
     KaitenClient, KaitenClientConfig, LimitKind, Limits, OutputFormat,
-    models::{CreateCardRequest, MineCardsFilters, SearchFilters},
+    models::{CreateCardRequest, MineCardsFilters, SearchFilters, UpdateCardRequest},
     render,
 };
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
@@ -136,8 +136,14 @@ enum CardCommand {
     },
     Update {
         id: u64,
-        #[arg(long, help = "Card description; pass an empty string to clear it")]
-        description: String,
+        #[arg(
+            long,
+            required_unless_present = "priority",
+            help = "Card description; pass an empty string to clear it"
+        )]
+        description: Option<String>,
+        #[arg(long, required_unless_present = "description", help = "Card priority")]
+        priority: Option<CardPriority>,
         #[arg(long)]
         json: bool,
     },
@@ -270,6 +276,18 @@ enum CompletionShell {
 enum CreatePosition {
     First,
     Last,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CardPriority {
+    Normal,
+    High,
+}
+
+impl CardPriority {
+    fn is_asap(self) -> bool {
+        matches!(self, Self::High)
+    }
 }
 
 impl CreatePosition {
@@ -640,10 +658,18 @@ async fn run_card(
         CardCommand::Update {
             id,
             description,
+            priority,
             json,
         } => {
             let card = client
-                .update_card_description(id, (!description.is_empty()).then_some(description))
+                .update_card(
+                    id,
+                    &UpdateCardRequest {
+                        description: description
+                            .map(|description| (!description.is_empty()).then_some(description)),
+                        asap: priority.map(CardPriority::is_asap),
+                    },
+                )
                 .await?;
             print_data(
                 json,
