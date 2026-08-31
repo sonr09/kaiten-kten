@@ -102,6 +102,7 @@ kten card context 12345 --comments-limit 20
 kten card comments 12345 --limit 10 --json
 kten card mine
 kten card mine --include-done --limit 50 --json
+kten card mine --include-archived --json
 kten search "release blocker" --space 12 --board 34 --limit 20
 kten space list
 kten space view 12 --json
@@ -165,12 +166,15 @@ pagination; `kten` adds only the filters that are currently exposed by the CLI
 and MCP tools.
 
 `kten card mine` resolves the authenticated Kaiten user and lists active,
-non-archived cards where that user is the responsible person.
+non-archived cards where that user is the owner, responsible person, or a
+member. Its human-readable and JSON output include the card lane. Use
+`--include-done` to include done cards and `--include-archived` to search the
+archive as well; the flags are independent.
 
 Use `kten board structure <board-id> --json` with card fields such as
 `board_id`, `column_id`, and `lane_id` when you need to map cards to
-human-readable board columns and lanes. `kten` exposes the primitives and leaves
-workflow-specific joins to users or agents.
+human-readable board columns and lanes outside `card mine`. `kten` exposes the
+primitives and leaves workflow-specific joins to users or agents.
 
 ## MCP
 

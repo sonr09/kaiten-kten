@@ -601,7 +601,7 @@ fn search_includes_filters_and_description_request() {
 }
 
 #[test]
-fn card_mine_json_fetches_current_user_assigned_active_cards() {
+fn card_mine_fetches_all_current_user_roles_and_prints_lane() {
     let server = MockServer::start();
     let user = server.mock(|when, then| {
         when.method(GET).path("/users/current");
@@ -610,10 +610,10 @@ fn card_mine_json_fetches_current_user_assigned_active_cards() {
             "full_name": "Alex Example"
         }));
     });
-    let cards = server.mock(|when, then| {
+    let owner_cards = server.mock(|when, then| {
         when.method(GET)
             .path("/cards")
-            .query_param("responsible_ids", "42")
+            .query_param("owner_ids", "42")
             .query_param("states", "1,2")
             .query_param("archived", "false")
             .query_param("condition", "1")
@@ -621,11 +621,61 @@ fn card_mine_json_fetches_current_user_assigned_active_cards() {
             .query_param("offset", "0")
             .query_param("additional_card_fields", "description");
         then.status(200).json_body_obj(&serde_json::json!([
-            {"id": 123, "title": "Implement card mine", "state": 2, "responsible_id": 42}
+            {
+                "id": 123,
+                "title": "Implement card mine",
+                "state": 2,
+                "owner_id": 42,
+                "lane_id": 30,
+                "lane": {"id": 30, "title": "Backend"}
+            }
+        ]));
+    });
+    let responsible_cards = server.mock(|when, then| {
+        when.method(GET)
+            .path("/cards")
+            .query_param("responsible_ids", "42")
+            .query_param("states", "1,2")
+            .query_param("archived", "false")
+            .query_param("condition", "1")
+            .query_param("limit", "20")
+            .query_param("offset", "0");
+        then.status(200).json_body_obj(&serde_json::json!([
+            {
+                "id": 124,
+                "title": "Responsible card",
+                "responsible_id": 42,
+                "lane_id": 31,
+                "lane": {"id": 31, "title": "Platform"}
+            }
+        ]));
+    });
+    let member_cards = server.mock(|when, then| {
+        when.method(GET)
+            .path("/cards")
+            .query_param("member_ids", "42")
+            .query_param("states", "1,2")
+            .query_param("archived", "false")
+            .query_param("condition", "1")
+            .query_param("limit", "20")
+            .query_param("offset", "0");
+        then.status(200).json_body_obj(&serde_json::json!([
+            {
+                "id": 123,
+                "title": "Implement card mine",
+                "lane_id": 30,
+                "lane": {"id": 30, "title": "Backend"}
+            },
+            {
+                "id": 125,
+                "title": "Member card",
+                "lane_id": 32,
+                "lane": {"id": 32, "title": "Support"}
+            }
         ]));
     });
 
-    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+    let json_output = Command::new(env!("CARGO_BIN_EXE_kten"))
         .env("KTEN_HOSTNAME", "company.kaiten.ru")
         .env("KTEN_TOKEN", "secret-token")
         .env("KTEN_TEST_API_BASE", server.url(""))
@@ -633,12 +683,62 @@ fn card_mine_json_fetches_current_user_assigned_active_cards() {
         .output()
         .unwrap();
 
+    assert!(json_output.status.success(), "{}", stderr(&json_output));
+    let json: serde_json::Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    assert_eq!(json.as_array().unwrap().len(), 3);
+    assert_eq!(json[0]["id"], 123);
+    assert_eq!(json[1]["id"], 124);
+    assert_eq!(json[2]["id"], 125);
+    assert_eq!(json[0]["lane_id"], 30);
+    assert_eq!(json[0]["lane"]["id"], 30);
+    assert_eq!(json[0]["lane"]["title"], "Backend");
+
+    let human_output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "mine"])
+        .output()
+        .unwrap();
+
+    assert!(human_output.status.success(), "{}", stderr(&human_output));
+    assert_eq!(
+        String::from_utf8(human_output.stdout).unwrap(),
+        "- #123 Implement card mine (lane: Backend)\n- #124 Responsible card (lane: Platform)\n- #125 Member card (lane: Support)\n"
+    );
+    assert_eq!(user.calls(), 2);
+    assert_eq!(owner_cards.calls(), 2);
+    assert_eq!(responsible_cards.calls(), 2);
+    assert_eq!(member_cards.calls(), 2);
+}
+
+#[test]
+fn card_mine_include_archived_keeps_done_filter_independent() {
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(GET).path("/users/current");
+        then.status(200)
+            .json_body_obj(&serde_json::json!({"id": 42}));
+    });
+    let cards = server.mock(|when, then| {
+        when.method(GET)
+            .path("/cards")
+            .query_param("states", "1,2")
+            .query_param_missing("condition")
+            .query_param_missing("archived");
+        then.status(200).json_body_obj(&serde_json::json!([]));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "mine", "--include-archived", "--json"])
+        .output()
+        .unwrap();
+
     assert!(output.status.success(), "{}", stderr(&output));
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("\"id\": 123"));
-    assert!(stdout.contains("\"title\": \"Implement card mine\""));
-    assert_eq!(user.calls(), 1);
-    assert_eq!(cards.calls(), 1);
+    assert_eq!(cards.calls(), 3);
 }
 
 #[test]

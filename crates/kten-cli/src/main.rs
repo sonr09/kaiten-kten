@@ -714,7 +714,7 @@ async fn run_card(
                     offset,
                 })
                 .await?;
-            print_data(json, || render::cards_human(&cards), &cards)
+            print_data(json, || render::mine_cards_human(&cards), &cards)
         }
     }
 }

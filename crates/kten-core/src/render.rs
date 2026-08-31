@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::models::{
-    Board, BoardStructure, Card, CardContext, CardMember, Column, Comment, Lane, Space,
+    Board, BoardStructure, Card, CardContext, CardMember, Column, Comment, Lane, MineCard, Space,
 };
 
 pub fn card_human(card: &Card, url: &str) -> String {
@@ -59,6 +59,37 @@ pub fn cards_human(cards: &[Card]) -> String {
         .map(|card| {
             format!(
                 "- #{} {}",
+                card.id,
+                card.title.as_deref().unwrap_or("(untitled)")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+pub fn mine_cards_human(cards: &[MineCard]) -> String {
+    if cards.is_empty() {
+        return "No cards found.\n".to_string();
+    }
+    cards
+        .iter()
+        .map(|mine_card| {
+            let card = &mine_card.card;
+            let lane = mine_card
+                .lane
+                .as_ref()
+                .and_then(|lane| lane.title.as_deref())
+                .filter(|title| !title.is_empty())
+                .map(ToString::to_string)
+                .or_else(|| {
+                    card.lane_id
+                        .or_else(|| mine_card.lane.as_ref().map(|lane| lane.id))
+                        .map(|id| format!("#{id}"))
+                })
+                .unwrap_or_else(|| "none".to_string());
+            format!(
+                "- #{} {} (lane: {lane})",
                 card.id,
                 card.title.as_deref().unwrap_or("(untitled)")
             )
@@ -213,7 +244,7 @@ fn list_human(items: impl Iterator<Item = (u64, String)>, noun: &str) -> String 
 
 #[cfg(test)]
 mod tests {
-    use crate::models::{Board, BoardStructure, Column, Lane, User};
+    use crate::models::{Board, BoardStructure, Column, Lane, MineCard, User};
 
     use super::*;
 
@@ -250,6 +281,68 @@ mod tests {
         assert!(rendered.contains("untrusted user content"));
         assert!(rendered.contains("```text"));
         assert!(!rendered.contains("<script>"));
+    }
+
+    #[test]
+    fn mine_cards_always_show_lane_location() {
+        let cards = [
+            MineCard {
+                card: Card {
+                    id: 1,
+                    title: Some("Named lane".to_string()),
+                    description: None,
+                    asap: None,
+                    archived: Some(false),
+                    state: Some(2),
+                    responsible_id: None,
+                    owner_id: Some(42),
+                    board_id: Some(10),
+                    column_id: Some(20),
+                    lane_id: Some(30),
+                },
+                lane: Some(Lane {
+                    id: 30,
+                    title: Some("Backend".to_string()),
+                }),
+            },
+            MineCard {
+                card: Card {
+                    id: 2,
+                    title: Some("Lane id fallback".to_string()),
+                    description: None,
+                    asap: None,
+                    archived: Some(false),
+                    state: Some(2),
+                    responsible_id: Some(42),
+                    owner_id: None,
+                    board_id: Some(10),
+                    column_id: Some(20),
+                    lane_id: Some(31),
+                },
+                lane: None,
+            },
+            MineCard {
+                card: Card {
+                    id: 3,
+                    title: Some("No lane".to_string()),
+                    description: None,
+                    asap: None,
+                    archived: Some(false),
+                    state: Some(2),
+                    responsible_id: None,
+                    owner_id: None,
+                    board_id: Some(10),
+                    column_id: Some(20),
+                    lane_id: None,
+                },
+                lane: None,
+            },
+        ];
+
+        assert_eq!(
+            mine_cards_human(&cards),
+            "- #1 Named lane (lane: Backend)\n- #2 Lane id fallback (lane: #31)\n- #3 No lane (lane: none)\n"
+        );
     }
 
     #[test]

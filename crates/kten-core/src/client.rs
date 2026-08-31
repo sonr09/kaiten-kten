@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc, time::Duration};
+use std::{collections::HashSet, fs, sync::Arc, time::Duration};
 
 use reqwest::{Certificate, Client, StatusCode};
 use tokio::sync::Mutex;
@@ -10,8 +10,8 @@ use crate::{
     limits::{LimitKind, Limits},
     models::{
         AddCardMemberRequest, Board, BoardStructure, Card, CardContext, CardMember, Column,
-        Comment, CreateCardRequest, CurrentUser, Lane, MineCardsFilters, SearchFilters, Space,
-        UpdateCardRequest,
+        Comment, CreateCardRequest, CurrentUser, Lane, MineCard, MineCardsFilters, SearchFilters,
+        Space, UpdateCardRequest,
     },
 };
 
@@ -129,22 +129,41 @@ impl KaitenClient {
         self.get_json("cards", &params).await
     }
 
-    pub async fn cards_mine(&self, filters: MineCardsFilters) -> Result<Vec<Card>> {
+    pub async fn cards_mine(&self, filters: MineCardsFilters) -> Result<Vec<MineCard>> {
         let current_user = self.current_user().await?;
         let limit = Limits::validate(Some(filters.limit), LimitKind::Search)?;
         let states = if filters.include_done { "1,2,3" } else { "1,2" };
-        let mut params = vec![
-            ("responsible_ids", current_user.id.to_string()),
-            ("states", states.to_string()),
-            ("condition", "1".to_string()),
-            ("limit", limit.to_string()),
-            ("offset", filters.offset.to_string()),
-            ("additional_card_fields", "description".to_string()),
-        ];
-        if !filters.include_archived {
-            params.push(("archived", "false".to_string()));
+        let mut cards_by_role = Vec::with_capacity(3);
+        for role_filter in ["owner_ids", "responsible_ids", "member_ids"] {
+            let mut params = vec![
+                (role_filter, current_user.id.to_string()),
+                ("states", states.to_string()),
+                ("limit", limit.to_string()),
+                ("offset", filters.offset.to_string()),
+                ("additional_card_fields", "description".to_string()),
+            ];
+            if !filters.include_archived {
+                params.push(("condition", "1".to_string()));
+                params.push(("archived", "false".to_string()));
+            }
+            cards_by_role.push(self.get_json::<Vec<MineCard>>("cards", &params).await?);
         }
-        self.get_json("cards", &params).await
+
+        let mut cards = Vec::with_capacity(limit as usize);
+        let mut seen_ids = HashSet::new();
+        for index in 0..limit as usize {
+            for role_cards in &cards_by_role {
+                if let Some(card) = role_cards.get(index)
+                    && seen_ids.insert(card.card.id)
+                {
+                    cards.push(card.clone());
+                    if cards.len() == limit as usize {
+                        return Ok(cards);
+                    }
+                }
+            }
+        }
+        Ok(cards)
     }
 
     pub async fn spaces(&self, limit: u32) -> Result<Vec<Space>> {
@@ -628,7 +647,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cards_mine_resolves_current_user_and_filters_active_responsible_cards() {
+    async fn cards_mine_filters_active_cards_by_all_current_user_roles() {
         let _guard = env_lock().lock().unwrap();
         let server = MockServer::start();
         let user = server.mock(|when, then| {
@@ -639,10 +658,10 @@ mod tests {
                 "username": "alex.example"
             }));
         });
-        let cards = server.mock(|when, then| {
+        let owner_cards = server.mock(|when, then| {
             when.method(GET)
                 .path("/cards")
-                .query_param("responsible_ids", "42")
+                .query_param("owner_ids", "42")
                 .query_param("states", "1,2")
                 .query_param("archived", "false")
                 .query_param("condition", "1")
@@ -656,10 +675,54 @@ mod tests {
                     "description": "Details",
                     "archived": false,
                     "state": 2,
-                    "responsible_id": 42,
+                    "owner_id": 42,
                     "board_id": 10,
                     "column_id": 20,
-                    "lane_id": 30
+                    "lane_id": 30,
+                    "lane": {"id": 30, "title": "Backend"}
+                }
+            ]));
+        });
+        let responsible_cards = server.mock(|when, then| {
+            when.method(GET)
+                .path("/cards")
+                .query_param("responsible_ids", "42")
+                .query_param("states", "1,2")
+                .query_param("archived", "false")
+                .query_param("condition", "1")
+                .query_param("limit", "20")
+                .query_param("offset", "0");
+            then.status(200).json_body_obj(&serde_json::json!([
+                {
+                    "id": 124,
+                    "title": "Responsible card",
+                    "responsible_id": 42,
+                    "lane_id": 31,
+                    "lane": {"id": 31, "title": "Platform"}
+                }
+            ]));
+        });
+        let member_cards = server.mock(|when, then| {
+            when.method(GET)
+                .path("/cards")
+                .query_param("member_ids", "42")
+                .query_param("states", "1,2")
+                .query_param("archived", "false")
+                .query_param("condition", "1")
+                .query_param("limit", "20")
+                .query_param("offset", "0");
+            then.status(200).json_body_obj(&serde_json::json!([
+                {
+                    "id": 123,
+                    "title": "Implement card mine",
+                    "lane_id": 30,
+                    "lane": {"id": 30, "title": "Backend"}
+                },
+                {
+                    "id": 125,
+                    "title": "Member card",
+                    "lane_id": 32,
+                    "lane": {"id": 32, "title": "Support"}
                 }
             ]));
         });
@@ -674,19 +737,28 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, 123);
-        assert_eq!(result[0].state, Some(2));
-        assert_eq!(result[0].responsible_id, Some(42));
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].card.id, 123);
+        assert_eq!(result[0].card.state, Some(2));
+        assert_eq!(result[0].card.owner_id, Some(42));
+        assert_eq!(result[1].card.id, 124);
+        assert_eq!(result[2].card.id, 125);
+        assert_eq!(result[0].lane.as_ref().unwrap().id, 30);
+        assert_eq!(
+            result[0].lane.as_ref().unwrap().title.as_deref(),
+            Some("Backend")
+        );
         assert_eq!(user.calls(), 1);
-        assert_eq!(cards.calls(), 1);
+        assert_eq!(owner_cards.calls(), 1);
+        assert_eq!(responsible_cards.calls(), 1);
+        assert_eq!(member_cards.calls(), 1);
         unsafe {
             std::env::remove_var("KTEN_TEST_API_BASE");
         }
     }
 
     #[tokio::test]
-    async fn cards_mine_can_include_done_and_archived_cards() {
+    async fn cards_mine_can_include_archived_without_including_done_cards() {
         let _guard = env_lock().lock().unwrap();
         let server = MockServer::start();
         server.mock(|when, then| {
@@ -697,12 +769,11 @@ mod tests {
         let cards = server.mock(|when, then| {
             when.method(GET)
                 .path("/cards")
-                .query_param("responsible_ids", "42")
-                .query_param("states", "1,2,3")
-                .query_param("condition", "1")
+                .query_param("states", "1,2")
                 .query_param("limit", "5")
                 .query_param("offset", "10")
                 .query_param("additional_card_fields", "description")
+                .query_param_missing("condition")
                 .query_param_missing("archived");
             then.status(200).json_body_obj(&serde_json::json!([]));
         });
@@ -710,7 +781,7 @@ mod tests {
         let result = client(&server)
             .cards_mine(MineCardsFilters {
                 limit: 5,
-                include_done: true,
+                include_done: false,
                 include_archived: true,
                 offset: 10,
             })
@@ -718,7 +789,7 @@ mod tests {
             .unwrap();
 
         assert!(result.is_empty());
-        assert_eq!(cards.calls(), 1);
+        assert_eq!(cards.calls(), 3);
         unsafe {
             std::env::remove_var("KTEN_TEST_API_BASE");
         }

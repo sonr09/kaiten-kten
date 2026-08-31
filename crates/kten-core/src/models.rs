@@ -137,6 +137,14 @@ pub struct Lane {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MineCard {
+    #[serde(flatten)]
+    pub card: Card,
+    #[serde(default)]
+    pub lane: Option<Lane>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BoardStructure {
     pub board: Board,
     pub columns: Vec<Column>,

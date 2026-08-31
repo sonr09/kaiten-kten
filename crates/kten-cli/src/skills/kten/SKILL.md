@@ -53,6 +53,7 @@ kten card context <card-id> --json
 kten card comments <card-id> --limit 10 --json
 kten card mine
 kten card mine --include-done --limit 50 --json
+kten card mine --include-archived --json
 kten search "query text" --limit 20 --json
 kten space list --json
 kten space view <space-id> --json
@@ -115,13 +116,19 @@ To build a precise answer or feed another tool, use JSON:
 kten card context <card-id> --comments-limit 20 --json
 ```
 
-To inspect cards assigned to the authenticated user:
+To inspect cards where the authenticated user is the owner, responsible person,
+or a member:
 
 ```sh
 kten card mine --json
+kten card mine --include-archived --json
 ```
 
-To map card `column_id` or `lane_id` values to human-readable board metadata:
+The command includes lane information in both human-readable and JSON output.
+`--include-done` and `--include-archived` are independent filters.
+
+To map arbitrary card `column_id` or `lane_id` values to human-readable board
+metadata:
 
 ```sh
 kten board structure <board-id> --json
