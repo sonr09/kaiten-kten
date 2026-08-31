@@ -99,7 +99,7 @@ pub struct Comment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct User {
-    pub id: Option<u64>,
+    pub id: Option<i64>,
     #[serde(default)]
     pub full_name: Option<String>,
     #[serde(default)]

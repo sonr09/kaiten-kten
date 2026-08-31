@@ -777,6 +777,74 @@ fn card_context_and_comments_use_mock_http() {
 }
 
 #[test]
+fn card_comment_negative_author_id_works_in_human_and_json_output() {
+    let server = MockServer::start();
+    let card = server.mock(|when, then| {
+        when.method(GET).path("/cards/123");
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "description": "Details"
+        }));
+    });
+    let comments = server.mock(|when, then| {
+        when.method(GET)
+            .path("/cards/123/comments")
+            .query_param("limit", "50");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 987,
+            "text": "Automation finished",
+            "author_id": -7,
+            "author": {
+                "id": -7,
+                "full_name": "Kaiten Bot"
+            }
+        }]));
+    });
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(args)
+            .output()
+            .unwrap()
+    };
+
+    let context_human = run(&["card", "context", "123", "--comments-limit", "50"]);
+    assert!(context_human.status.success(), "{}", stderr(&context_human));
+    let stdout = String::from_utf8(context_human.stdout).unwrap();
+    assert!(stdout.contains("### Comment #987 by Kaiten Bot"));
+    assert!(stdout.contains("Automation finished"));
+
+    let context_json = run(&["card", "context", "123", "--comments-limit", "50", "--json"]);
+    assert!(context_json.status.success(), "{}", stderr(&context_json));
+    let json: serde_json::Value = serde_json::from_slice(&context_json.stdout).unwrap();
+    assert_eq!(json["comments"][0]["author"]["id"], -7);
+    assert_eq!(json["comments"][0]["text"], "Automation finished");
+
+    let comments_human = run(&["card", "comments", "123", "--limit", "50"]);
+    assert!(
+        comments_human.status.success(),
+        "{}",
+        stderr(&comments_human)
+    );
+    assert_eq!(
+        String::from_utf8(comments_human.stdout).unwrap(),
+        "- #987 by Kaiten Bot: Automation finished\n"
+    );
+
+    let comments_json = run(&["card", "comments", "123", "--limit", "50", "--json"]);
+    assert!(comments_json.status.success(), "{}", stderr(&comments_json));
+    let json: serde_json::Value = serde_json::from_slice(&comments_json.stdout).unwrap();
+    assert_eq!(json[0]["author"]["id"], -7);
+    assert_eq!(json[0]["text"], "Automation finished");
+
+    assert_eq!(card.calls(), 2);
+    assert_eq!(comments.calls(), 4);
+}
+
+#[test]
 fn spaces_and_boards_use_mock_http() {
     let server = MockServer::start();
     let spaces = server.mock(|when, then| {
