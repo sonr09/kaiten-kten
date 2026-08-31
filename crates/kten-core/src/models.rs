@@ -61,6 +61,11 @@ pub struct AddCardMemberRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AddCommentRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CardMember {
     pub id: u64,
     #[serde(default)]

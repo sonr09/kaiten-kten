@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs, sync::Arc, time::Duration};
 
-use reqwest::{Certificate, Client, StatusCode};
+use reqwest::{Certificate, Client, StatusCode, redirect, retry};
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -9,9 +9,9 @@ use crate::{
     config::EffectiveConfig,
     limits::{LimitKind, Limits},
     models::{
-        AddCardMemberRequest, Board, BoardStructure, Card, CardContext, CardMember, Column,
-        Comment, CreateCardRequest, CurrentUser, Lane, MineCard, MineCardsFilters, SearchFilters,
-        Space, UpdateCardRequest,
+        AddCardMemberRequest, AddCommentRequest, Board, BoardStructure, Card, CardContext,
+        CardMember, Column, Comment, CreateCardRequest, CurrentUser, Lane, MineCard,
+        MineCardsFilters, SearchFilters, Space, UpdateCardRequest,
     },
 };
 
@@ -37,14 +37,17 @@ impl TryFrom<&EffectiveConfig> for KaitenClientConfig {
 #[derive(Debug, Clone)]
 pub struct KaitenClient {
     http: Client,
+    mutation_http: Client,
     config: KaitenClientConfig,
     throttle: Arc<Mutex<()>>,
 }
 
 impl KaitenClient {
     pub fn new(config: KaitenClientConfig) -> Result<Self> {
+        let (http, mutation_http) = build_http_clients(config.ca_bundle.as_deref())?;
         Ok(Self {
-            http: build_http_client(config.ca_bundle.as_deref())?,
+            http,
+            mutation_http,
             config,
             throttle: Arc::new(Mutex::new(())),
         })
@@ -91,6 +94,11 @@ impl KaitenClient {
             &AddCardMemberRequest { user_id },
         )
         .await
+    }
+
+    pub async fn add_comment(&self, card_id: u64, request: &AddCommentRequest) -> Result<Comment> {
+        self.post_json(&format!("cards/{card_id}/comments"), request)
+            .await
     }
 
     pub async fn comments(&self, card_id: u64, limit: u32) -> Result<Vec<Comment>> {
@@ -246,7 +254,7 @@ impl KaitenClient {
         let _permit = self.throttle.lock().await;
         tokio::time::sleep(Duration::from_millis(210)).await;
         let response = self
-            .http
+            .mutation_http
             .post(url)
             .bearer_auth(&self.config.token)
             .json(body)
@@ -268,7 +276,7 @@ impl KaitenClient {
         let _permit = self.throttle.lock().await;
         tokio::time::sleep(Duration::from_millis(210)).await;
         let response = self
-            .http
+            .mutation_http
             .patch(url)
             .bearer_auth(&self.config.token)
             .json(body)
@@ -320,14 +328,18 @@ impl KaitenClient {
     }
 }
 
-fn build_http_client(ca_bundle_path: Option<&str>) -> Result<Client> {
+fn build_http_clients(ca_bundle_path: Option<&str>) -> Result<(Client, Client)> {
     let mut builder = Client::builder();
+    let mut mutation_builder = Client::builder()
+        .retry(retry::never())
+        .redirect(redirect::Policy::none());
     if let Some(path) = ca_bundle_path {
         for cert in load_ca_bundle(path)? {
-            builder = builder.add_root_certificate(cert);
+            builder = builder.add_root_certificate(cert.clone());
+            mutation_builder = mutation_builder.add_root_certificate(cert);
         }
     }
-    Ok(builder.build()?)
+    Ok((builder.build()?, mutation_builder.build()?))
 }
 
 fn load_ca_bundle(path: &str) -> Result<Vec<Certificate>> {

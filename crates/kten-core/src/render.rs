@@ -27,6 +27,10 @@ pub fn card_member_human(card_id: u64, member: &CardMember) -> String {
     format!("Added member #{}, {name}, to card #{card_id}.\n", member.id)
 }
 
+pub fn card_comment_added_human(card_id: u64, comment: &Comment) -> String {
+    format!("Added comment #{} to card #{card_id}.\n", comment.id)
+}
+
 pub fn comments_human(comments: &[Comment]) -> String {
     if comments.is_empty() {
         return "No comments.\n".to_string();

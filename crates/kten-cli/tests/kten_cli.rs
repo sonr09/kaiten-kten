@@ -464,6 +464,214 @@ fn card_member_add_posts_user_id_and_prints_member() {
 }
 
 #[test]
+fn card_comment_add_posts_text_and_returns_created_comment_as_json() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/comments")
+            .json_body_obj(&serde_json::json!({"text": "Ready for review"}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 456,
+            "text": "Ready for review",
+            "created": "2026-08-31T12:00:00.000Z",
+            "updated": "2026-08-31T12:00:00.000Z",
+            "card_id": 123,
+            "author_id": 42
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "comment",
+            "add",
+            "123",
+            "--text",
+            "Ready for review",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["id"], 456);
+    assert_eq!(json["text"], "Ready for review");
+    assert_eq!(json["created"], "2026-08-31T12:00:00.000Z");
+    assert_eq!(mock.calls(), 1);
+}
+
+#[test]
+fn card_comment_add_confirms_created_comment_in_human_output() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/comments")
+            .json_body_obj(&serde_json::json!({"text": "Shipped"}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 456,
+            "text": "Shipped"
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "comment", "add", "123", "--text", "Shipped"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "Added comment #456 to card #123.\n"
+    );
+    assert_eq!(mock.calls(), 1);
+}
+
+#[test]
+fn card_comment_add_rejects_empty_text_before_request() {
+    let server = MockServer::start();
+    let post = server.mock(|when, then| {
+        when.method(POST);
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 456,
+            "text": "unexpected"
+        }));
+    });
+
+    for text in ["", "   \t"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "comment", "add", "123", "--text", text])
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success());
+        assert!(stderr(&output).contains("comment text must not be empty"));
+    }
+    assert_eq!(post.calls(), 0);
+}
+
+#[test]
+fn card_comment_add_rejects_invalid_card_id_before_request() {
+    let server = MockServer::start();
+    let post = server.mock(|when, then| {
+        when.method(POST);
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 456,
+            "text": "unexpected"
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "comment", "add", "0", "--text", "Hello"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("card ID must be a positive integer"));
+    assert_eq!(post.calls(), 0);
+}
+
+#[test]
+fn card_comment_add_does_not_retry_failed_post() {
+    let server = MockServer::start();
+    let post = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/comments")
+            .json_body_obj(&serde_json::json!({"text": "Possibly created"}));
+        then.status(429).body("rate limited");
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "comment",
+            "add",
+            "123",
+            "--text",
+            "Possibly created",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("Kaiten API returned 429: rate limited"));
+    assert_eq!(post.calls(), 1);
+}
+
+#[test]
+fn card_comment_add_does_not_follow_post_redirect() {
+    let server = MockServer::start();
+    let redirected_post = server.mock(|when, then| {
+        when.method(POST)
+            .path("/duplicate")
+            .json_body_obj(&serde_json::json!({"text": "Possibly duplicated"}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 457,
+            "text": "Possibly duplicated"
+        }));
+    });
+    let redirect_location = server.url("/duplicate");
+    let initial_post = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/comments")
+            .json_body_obj(&serde_json::json!({"text": "Possibly duplicated"}));
+        then.status(307)
+            .header("Location", redirect_location.as_str())
+            .body("redirected");
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "comment",
+            "add",
+            "123",
+            "--text",
+            "Possibly duplicated",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("Kaiten API returned 307: redirected"));
+    assert_eq!(initial_post.calls(), 1);
+    assert_eq!(redirected_post.calls(), 0);
+}
+
+#[test]
+fn card_comment_add_help_documents_interface_and_retry_safety() {
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .args(["card", "comment", "add", "--help"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("kten card comment add [OPTIONS] --text <TEXT> <CARD_ID>"));
+    assert!(stdout.contains("Add one comment to an existing card"));
+    assert!(stdout.contains("Failed POST requests are not retried automatically"));
+    assert!(stdout.contains("--json"));
+}
+
+#[test]
 fn card_create_posts_required_fields_and_prints_created_card() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {

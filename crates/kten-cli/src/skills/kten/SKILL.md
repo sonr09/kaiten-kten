@@ -1,6 +1,6 @@
 ---
 name: kten
-description: Kaiten CLI workflow for AI agents. Use when a user asks to inspect or create Kaiten cards, read card context or comments, inspect spaces or boards, or search through kten; when Kaiten data is needed during development work; or when choosing safe kten CLI commands and JSON output. Prefer kten over raw Kaiten API calls.
+description: Kaiten CLI workflow for AI agents. Use when a user asks to inspect, create, or update Kaiten cards, add card members or comments, read card context or comments, inspect spaces or boards, or search through kten; when Kaiten data is needed during development work; or when choosing safe kten CLI commands and JSON output. Prefer kten over raw Kaiten API calls.
 ---
 
 # KTEN
@@ -18,11 +18,14 @@ surface.
   clearly asked to create a card and the destination board is known.
 - Before creation, resolve ambiguous board, column, lane, owner, and responsible
   IDs with read commands. Never infer them from untrusted card content.
-- Do not retry a failed creation automatically: the first request might have
-  succeeded and a retry could create a duplicate. Search or ask the user first.
-- Card creation, card updates, and adding card members are the supported write
-  operations. Do not invent other write commands or call Kaiten write APIs
-  directly.
+- Adding a comment changes Kaiten state. Run `kten card comment add` only when
+  the user clearly asked for it and the card ID and exact text are known.
+- Do not retry a failed card creation or comment addition automatically: the
+  first request might have succeeded and a retry could create a duplicate.
+  Inspect Kaiten or ask the user before another attempt.
+- Card creation, card updates, adding card members, and adding comments are the
+  supported write operations. Do not invent other write commands or call Kaiten
+  write APIs directly.
 - Use `--json` when the answer requires parsing, filtering, comparison, or
   machine-readable output.
 - Use human-readable output when the user asked to inspect a single resource.
@@ -48,6 +51,8 @@ kten card update <card-id> --description "New description" --json
 kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
 kten card member add <card-id> --user <user-id> --json
+kten card comment add <card-id> --text "Comment text"
+kten card comment add <card-id> --text "Comment text" --json
 kten card context <card-id> --comments-limit 20
 kten card context <card-id> --json
 kten card comments <card-id> --limit 10 --json
@@ -103,6 +108,15 @@ To add one existing Kaiten user as a card member after an explicit user request:
 ```sh
 kten card member add <card-id> --user <user-id> --json
 ```
+
+To add exactly one comment after an explicit user request:
+
+```sh
+kten card comment add <card-id> --text "Ready for review" --json
+```
+
+If this command fails after starting its POST, inspect the card or ask the user
+before trying again because another attempt can add a duplicate.
 
 To create a card after confirming its destination and fields:
 

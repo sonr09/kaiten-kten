@@ -9,7 +9,9 @@ use dialoguer::{Input, Password};
 use kten_core::{
     CliConfigOverrides, Config, ConfigPaths, EditableConfigKey, EffectiveConfig, Error,
     KaitenClient, KaitenClientConfig, LimitKind, Limits, OutputFormat,
-    models::{CreateCardRequest, MineCardsFilters, SearchFilters, UpdateCardRequest},
+    models::{
+        AddCommentRequest, CreateCardRequest, MineCardsFilters, SearchFilters, UpdateCardRequest,
+    },
     render,
 };
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
@@ -134,6 +136,11 @@ enum CardCommand {
         #[command(subcommand)]
         command: CardMemberCommand,
     },
+    #[command(about = "Manage card comments")]
+    Comment {
+        #[command(subcommand)]
+        command: CardCommentCommand,
+    },
     Update {
         id: u64,
         #[arg(
@@ -189,6 +196,44 @@ enum CardMemberCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum CardCommentCommand {
+    #[command(
+        about = "Add one comment to an existing card",
+        long_about = "Add one comment to an existing card.\n\nFailed POST requests are not retried automatically because the comment might already have been created.",
+        after_help = "Examples:\n  kten card comment add 123 --text \"Ready for review\"\n  kten card comment add 123 --text \"Ready for review\" --json"
+    )]
+    Add {
+        #[arg(value_name = "CARD_ID", value_parser = parse_positive_card_id, help = "Positive card ID")]
+        id: u64,
+        #[arg(
+            long,
+            value_parser = parse_comment_text,
+            help = "Comment text; whitespace-only values are rejected"
+        )]
+        text: String,
+        #[arg(long, help = "Print the created comment as JSON")]
+        json: bool,
+    },
+}
+
+fn parse_positive_card_id(value: &str) -> Result<u64, String> {
+    let id = value
+        .parse::<u64>()
+        .map_err(|_| "card ID must be a positive integer".to_string())?;
+    if id == 0 {
+        return Err("card ID must be a positive integer".to_string());
+    }
+    Ok(id)
+}
+
+fn parse_comment_text(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        return Err("comment text must not be empty".to_string());
+    }
+    Ok(value.to_string())
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -645,6 +690,16 @@ async fn run_card(
             CardMemberCommand::Add { id, user, json } => {
                 let member = client.add_card_member(id, user).await?;
                 print_data(json, || render::card_member_human(id, &member), &member)
+            }
+        },
+        CardCommand::Comment { command } => match command {
+            CardCommentCommand::Add { id, text, json } => {
+                let comment = client.add_comment(id, &AddCommentRequest { text }).await?;
+                print_data(
+                    json,
+                    || render::card_comment_added_human(id, &comment),
+                    &comment,
+                )
             }
         },
         CardCommand::View { id, json } => {

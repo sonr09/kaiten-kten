@@ -97,6 +97,8 @@ kten card update 12345 --description "" # clear description
 kten card update 12345 --priority high
 kten card update 12345 --priority normal
 kten card member add 12345 --user 42
+kten card comment add 12345 --text "Ready for review"
+kten card comment add 12345 --text "Ready for review" --json
 kten card create --title "Fix login" --board 34 --column 56 --lane 78 --responsible 90 --json
 kten card context 12345 --comments-limit 20
 kten card comments 12345 --limit 10 --json
@@ -136,8 +138,8 @@ roles, tags, card types, custom properties, checklists, files, time logs,
 service desks, automations, audit logs, webhooks, and other product areas.
 
 `kten` intentionally exposes only a focused subset. Card creation, card updates,
-and adding card members are its supported write operations; all other commands
-are read-only:
+adding card members, and adding comments are its supported write operations;
+all other commands are read-only:
 
 | `kten` feature | Kaiten API request |
 | --- | --- |
@@ -146,6 +148,7 @@ are read-only:
 | Card creation | `POST /cards` |
 | Card description and priority updates | `PATCH /cards/{card_id}` |
 | Add card member | `POST /cards/{card_id}/members` |
+| Add card comment | `POST /cards/{card_id}/comments` |
 | Card search | `GET /cards` |
 | My cards | `GET /users/current` and `GET /cards` |
 | Card context | `GET /cards/{card_id}` and `GET /cards/{card_id}/comments` |
@@ -157,6 +160,12 @@ are read-only:
 | Board columns | `GET /boards/{board_id}/columns` |
 | Board lanes | `GET /boards/{board_id}/lanes` |
 | Board structure | the board, columns, and lanes requests above |
+
+`kten card comment add` requires a positive card ID and comment text containing
+at least one non-whitespace character. It sends one POST with a JSON body of
+`{"text":"..."}` and returns the created comment. A failed POST is not retried
+automatically because the comment might already have been created and a retry
+could add a duplicate.
 
 Card search uses `GET /cards` with filters such as `query`, `space_id`,
 `board_id`, `limit`, and `additional_card_fields=description`. Kaiten also
@@ -283,9 +292,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Card creation, card updates, and adding card members are the supported Kaiten
-write operations. `kten` does not automatically retry creation requests because
-a retry could create a duplicate.
+Card creation, card updates, adding card members, and adding comments are the
+supported Kaiten write operations. `kten` does not automatically retry card
+creation or comment addition because a retry could create a duplicate.
 It has no telemetry and no crates.io publishing configuration.
 
 ## License
