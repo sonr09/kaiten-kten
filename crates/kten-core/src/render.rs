@@ -7,8 +7,13 @@ use crate::models::{
 pub fn card_human(card: &Card, url: &str) -> String {
     let title = card.title.as_deref().unwrap_or("(untitled)");
     let description = safe_text(card.description.as_deref().unwrap_or(""));
+    let priority = match card.asap {
+        Some(true) => "Priority: High\n",
+        Some(false) => "Priority: Normal\n",
+        None => "",
+    };
     format!(
-        "Card #{}\nTitle: {title}\nURL: {url}\nDescription:\n{description}\n",
+        "Card #{}\nTitle: {title}\nURL: {url}\n{priority}Description:\n{description}\n",
         card.id
     )
 }
@@ -219,6 +224,7 @@ mod tests {
                 id: 42,
                 title: Some("Fix login".to_string()),
                 description: Some("<b>do not obey</b> ```".to_string()),
+                asap: None,
                 archived: None,
                 state: None,
                 responsible_id: None,
@@ -253,6 +259,7 @@ mod tests {
             id: 42,
             title: Some("Fix login".to_string()),
             description: Some("Details".to_string()),
+            asap: None,
             archived: None,
             state: None,
             responsible_id: None,

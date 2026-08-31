@@ -11,7 +11,7 @@ use crate::{
     models::{
         AddCardMemberRequest, Board, BoardStructure, Card, CardContext, CardMember, Column,
         Comment, CreateCardRequest, CurrentUser, Lane, MineCardsFilters, SearchFilters, Space,
-        UpdateCardDescriptionRequest,
+        UpdateCardRequest,
     },
 };
 
@@ -71,11 +71,18 @@ impl KaitenClient {
         card_id: u64,
         description: Option<String>,
     ) -> Result<Card> {
-        self.patch_json(
-            &format!("cards/{card_id}"),
-            &UpdateCardDescriptionRequest { description },
+        self.update_card(
+            card_id,
+            &UpdateCardRequest {
+                description: Some(description),
+                asap: None,
+            },
         )
         .await
+    }
+
+    pub async fn update_card(&self, card_id: u64, request: &UpdateCardRequest) -> Result<Card> {
+        self.patch_json(&format!("cards/{card_id}"), request).await
     }
 
     pub async fn add_card_member(&self, card_id: u64, user_id: u64) -> Result<CardMember> {
@@ -511,6 +518,7 @@ mod tests {
                 id: 1,
                 title: Some("Release".to_string()),
                 description: Some("snippet".to_string()),
+                asap: None,
                 archived: None,
                 state: None,
                 responsible_id: None,
