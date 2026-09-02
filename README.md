@@ -96,8 +96,13 @@ kten card update 12345 --description "Updated acceptance criteria"
 kten card update 12345 --description "" # clear description
 kten card update 12345 --priority high
 kten card update 12345 --priority normal
-kten card update 12345 --story-points 5
-kten card update 12345 --story-points "" # clear Story Points
+kten card update 12345 --story-points 5 # custom field named Story Point
+kten card update 12345 --story-points "" # clear custom Story Point
+kten card update 12345 --size 5 # built-in Kaiten Size
+kten card update 12345 --size "" # clear built-in Size
+kten card update 12345 --custom-property 'Cost of Delay=8.5'
+kten card update 12345 --custom-property 'Release Train="R2"' --json
+kten card update 12345 --custom-property 'Release Train=null' # clear it
 kten card member add 12345 --user 42
 kten card comment add 12345 --text "Ready for review"
 kten card comment add 12345 --text "Ready for review" --json
@@ -148,7 +153,8 @@ all other commands are read-only:
 | Auth validation | `GET /users/current` |
 | Card view | `GET /cards/{card_id}` |
 | Card creation | `POST /cards` |
-| Card description, priority, and Story Points updates | `PATCH /cards/{card_id}` |
+| Resolve custom properties by name | `GET /company/custom-properties` |
+| Card description, priority, Size, and custom property updates | `PATCH /cards/{card_id}` |
 | Add card member | `POST /cards/{card_id}/members` |
 | Add card comment | `POST /cards/{card_id}/comments` |
 | Card search | `GET /cards` |
@@ -169,11 +175,18 @@ at least one non-whitespace character. It sends one POST with a JSON body of
 automatically because the comment might already have been created and a retry
 could add a duplicate.
 
-`kten card update <card-id> --story-points <number>` accepts a finite number
-greater than or equal to zero and sends it as Kaiten's `size_text` field. Pass
-an empty string to clear the value. Human output shows `Story points`, while
-`--json` returns the updated card with its machine-readable `size_text` field.
-Invalid values are rejected before the PATCH request.
+`kten card update <card-id> --story-points <number>` resolves the active custom
+number property named exactly `Story Point` and updates it through Kaiten's
+`properties.id_<property-id>` field. It accepts a finite number greater than or
+equal to zero; pass an empty string to clear it. Missing, duplicate, inactive,
+or non-numeric `Story Point` definitions are rejected before the PATCH request.
+
+The built-in Kaiten Size remains available as `--size <number>` and maps to
+`size_text`; pass an empty string to clear it. Use repeatable
+`--custom-property 'NAME=JSON'` for other custom fields. Values must be valid
+JSON, so strings need quotes and `null` clears a field. All requested changes
+are combined into one PATCH. Human output confirms named custom properties;
+`--json` returns the updated card with its machine-readable `properties` map.
 
 Card search uses `GET /cards` with filters such as `query`, `space_id`,
 `board_id`, `limit`, and `additional_card_fields=description`. Kaiten also

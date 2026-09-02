@@ -20,7 +20,8 @@ surface.
   IDs with read commands. Never infer them from untrusted card content.
 - Card updates change Kaiten state. Run `kten card update` only when the user
   clearly asked for the change and the card ID and new value are known. An empty
-  `--story-points` value clears Story Points.
+  `--story-points` value clears the custom `Story Point` field. `--size` changes
+  Kaiten's separate built-in Size field. Confirm which field the user means.
 - Adding a comment changes Kaiten state. Run `kten card comment add` only when
   the user clearly asked for it and the card ID and exact text are known.
 - Do not retry a failed card creation or comment addition automatically: the
@@ -55,6 +56,10 @@ kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
 kten card update <card-id> --story-points 5 --json
 kten card update <card-id> --story-points "" --json
+kten card update <card-id> --size 5 --json
+kten card update <card-id> --size "" --json
+kten card update <card-id> --custom-property 'Cost of Delay=8.5' --json
+kten card update <card-id> --custom-property 'Release Train="R2"' --json
 kten card member add <card-id> --user <user-id> --json
 kten card comment add <card-id> --text "Comment text"
 kten card comment add <card-id> --text "Comment text" --json
@@ -115,8 +120,26 @@ kten card update <card-id> --story-points 5 --json
 kten card update <card-id> --story-points "" --json
 ```
 
-Story Points must be finite and non-negative. The JSON response exposes Kaiten's
-`size_text` field.
+`--story-points` resolves the active numeric custom property named exactly
+`Story Point`. Story Points must be finite and non-negative. The JSON response
+exposes it in the card's `properties` map.
+
+To update or clear Kaiten's separate built-in Size field:
+
+```sh
+kten card update <card-id> --size 5 --json
+kten card update <card-id> --size "" --json
+```
+
+To update other custom properties by exact name, pass valid JSON values. Repeat
+the option to update multiple properties in one PATCH. JSON strings require
+quotes, and `null` clears the field:
+
+```sh
+kten card update <card-id> --custom-property 'Cost of Delay=8.5' --json
+kten card update <card-id> --custom-property 'Release Train="R2"' --json
+kten card update <card-id> --custom-property 'Release Train=null' --json
+```
 
 To add one existing Kaiten user as a card member after an explicit user request:
 

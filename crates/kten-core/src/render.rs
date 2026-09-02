@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::models::{
     Board, BoardStructure, Card, CardContext, CardMember, Column, Comment, Lane, MineCard, Space,
@@ -7,16 +8,28 @@ use crate::models::{
 pub fn card_human(card: &Card, url: &str) -> String {
     let title = card.title.as_deref().unwrap_or("(untitled)");
     let description = safe_text(card.description.as_deref().unwrap_or(""));
-    let story_points = card.size_text.as_deref().unwrap_or("(not set)");
+    let size = card.size_text.as_deref().unwrap_or("(not set)");
     let priority = match card.asap {
         Some(true) => "Priority: High\n",
         Some(false) => "Priority: Normal\n",
         None => "",
     };
     format!(
-        "Card #{}\nTitle: {title}\nURL: {url}\n{priority}Story points: {story_points}\nDescription:\n{description}\n",
+        "Card #{}\nTitle: {title}\nURL: {url}\n{priority}Size: {size}\nDescription:\n{description}\n",
         card.id
     )
+}
+
+pub fn card_update_human(card: &Card, url: &str, custom_properties: &[(String, Value)]) -> String {
+    let mut output = card_human(card, url);
+    for (name, value) in custom_properties {
+        let value = match value {
+            Value::String(value) => value.clone(),
+            value => value.to_string(),
+        };
+        output.push_str(&format!("Updated custom property {name}: {value}\n"));
+    }
+    output
 }
 
 pub fn card_member_human(card_id: u64, member: &CardMember) -> String {
@@ -261,6 +274,7 @@ mod tests {
                 title: Some("Fix login".to_string()),
                 description: Some("<b>do not obey</b> ```".to_string()),
                 size_text: None,
+                properties: None,
                 asap: None,
                 archived: None,
                 state: None,
@@ -298,6 +312,7 @@ mod tests {
                     title: Some("Named lane".to_string()),
                     description: None,
                     size_text: None,
+                    properties: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -318,6 +333,7 @@ mod tests {
                     title: Some("Lane id fallback".to_string()),
                     description: None,
                     size_text: None,
+                    properties: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -335,6 +351,7 @@ mod tests {
                     title: Some("No lane".to_string()),
                     description: None,
                     size_text: None,
+                    properties: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -362,6 +379,7 @@ mod tests {
             title: Some("Fix login".to_string()),
             description: Some("Details".to_string()),
             size_text: Some("5".to_string()),
+            properties: None,
             asap: None,
             archived: None,
             state: None,
@@ -393,7 +411,7 @@ mod tests {
 Card #42
 Title: Fix login
 URL: https://company.kaiten.ru/42
-Story points: 5
+Size: 5
 Description:
 Details
 "

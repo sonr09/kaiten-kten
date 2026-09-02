@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Card {
@@ -7,6 +10,8 @@ pub struct Card {
     pub description: Option<String>,
     #[serde(default)]
     pub size_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties: Option<BTreeMap<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asap: Option<bool>,
     #[serde(default)]
@@ -57,6 +62,18 @@ pub struct UpdateCardRequest {
     pub asap: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_text: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub properties: Option<BTreeMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomProperty {
+    pub id: u64,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub property_type: String,
+    #[serde(default)]
+    pub condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -10,8 +10,8 @@ use crate::{
     limits::{LimitKind, Limits},
     models::{
         AddCardMemberRequest, AddCommentRequest, Board, BoardStructure, Card, CardContext,
-        CardMember, Column, Comment, CreateCardRequest, CurrentUser, Lane, MineCard,
-        MineCardsFilters, SearchFilters, Space, UpdateCardRequest,
+        CardMember, Column, Comment, CreateCardRequest, CurrentUser, CustomProperty, Lane,
+        MineCard, MineCardsFilters, SearchFilters, Space, UpdateCardRequest,
     },
 };
 
@@ -80,6 +80,7 @@ impl KaitenClient {
                 description: Some(description),
                 asap: None,
                 size_text: None,
+                properties: None,
             },
         )
         .await
@@ -87,6 +88,17 @@ impl KaitenClient {
 
     pub async fn update_card(&self, card_id: u64, request: &UpdateCardRequest) -> Result<Card> {
         self.patch_json(&format!("cards/{card_id}"), request).await
+    }
+
+    pub async fn custom_properties(&self, query: &str) -> Result<Vec<CustomProperty>> {
+        self.get_json(
+            "company/custom-properties",
+            &[
+                ("query", query.to_string()),
+                ("compact", "true".to_string()),
+            ],
+        )
+        .await
     }
 
     pub async fn add_card_member(&self, card_id: u64, user_id: u64) -> Result<CardMember> {
@@ -551,6 +563,7 @@ mod tests {
                 title: Some("Release".to_string()),
                 description: Some("snippet".to_string()),
                 size_text: None,
+                properties: None,
                 asap: None,
                 archived: None,
                 state: None,

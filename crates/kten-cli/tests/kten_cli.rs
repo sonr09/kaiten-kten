@@ -435,14 +435,28 @@ fn card_update_sets_and_clears_high_priority() {
 #[test]
 fn card_update_sets_story_points_and_prints_human_output() {
     let server = MockServer::start();
-    let mock = server.mock(|when, then| {
+    let property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Story Point")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 42,
+            "name": "Story Point",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
         when.method(PATCH)
             .path("/cards/123")
-            .json_body_obj(&serde_json::json!({"size_text": "5"}));
+            .json_body_obj(&serde_json::json!({
+                "properties": {"id_42": 5}
+            }));
         then.status(200).json_body_obj(&serde_json::json!({
             "id": 123,
             "title": "Fix login",
-            "size_text": "5"
+            "properties": {"id_42": 5}
         }));
     });
 
@@ -458,15 +472,278 @@ fn card_update_sets_story_points_and_prints_human_output() {
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("Story points: 5")
+            .contains("Updated custom property Story Point: 5")
     );
-    assert_eq!(mock.calls(), 1);
+    assert_eq!(property.calls(), 1);
+    assert_eq!(update.calls(), 1);
+}
+
+#[test]
+fn card_update_sets_size_and_prints_human_output() {
+    let server = MockServer::start();
+    let update = server.mock(|when, then| {
+        when.method(PATCH)
+            .path("/cards/123")
+            .json_body_obj(&serde_json::json!({"size_text": "5"}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "size_text": "5"
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "update", "123", "--size", "5"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Size: 5")
+    );
+    assert_eq!(update.calls(), 1);
+}
+
+#[test]
+fn card_update_sets_named_custom_property_and_prints_json() {
+    let server = MockServer::start();
+    let number_property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Cost of Delay")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 77,
+            "name": "Cost of Delay",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let string_property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Release Train")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 78,
+            "name": "Release Train",
+            "type": "string",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
+        when.method(PATCH)
+            .path("/cards/123")
+            .json_body_obj(&serde_json::json!({
+                "properties": {"id_77": 8.5, "id_78": "R2"}
+            }));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "properties": {"id_77": 8.5, "id_78": "R2"}
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "update",
+            "123",
+            "--custom-property",
+            "Cost of Delay=8.5",
+            "--custom-property",
+            "Release Train=\"R2\"",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["properties"]["id_77"], 8.5);
+    assert_eq!(json["properties"]["id_78"], "R2");
+    assert_eq!(number_property.calls(), 1);
+    assert_eq!(string_property.calls(), 1);
+    assert_eq!(update.calls(), 1);
+}
+
+#[test]
+fn card_update_rejects_invalid_custom_property_before_http() {
+    let server = MockServer::start();
+    let requests = server.mock(|when, then| {
+        when.method(GET);
+        then.status(500);
+    });
+    let updates = server.mock(|when, then| {
+        when.method(PATCH);
+        then.status(500);
+    });
+
+    for value in ["missing-equals", "=1", "Name=", "Name=plain-text"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "update", "123", "--custom-property", value])
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success(), "accepted {value:?}");
+        assert!(
+            stderr(&output).contains("custom property"),
+            "unexpected error for {value:?}: {}",
+            stderr(&output)
+        );
+    }
+
+    assert_eq!(requests.calls(), 0);
+    assert_eq!(updates.calls(), 0);
+}
+
+#[test]
+fn card_update_resolves_story_points_safely_before_patch() {
+    let cases = [
+        (
+            serde_json::json!([]),
+            "expected exactly one active custom property named \"Story Point\", found 0",
+        ),
+        (
+            serde_json::json!([
+                {"id": 42, "name": "Story Point", "type": "number", "condition": "active"},
+                {"id": 43, "name": "Story Point", "type": "number", "condition": "active"}
+            ]),
+            "expected exactly one active custom property named \"Story Point\", found 2",
+        ),
+        (
+            serde_json::json!([
+                {"id": 42, "name": "Story Point", "type": "string", "condition": "active"}
+            ]),
+            "custom property \"Story Point\" must have type number",
+        ),
+    ];
+
+    for (properties, expected_error) in cases {
+        let server = MockServer::start();
+        let property = server.mock(|when, then| {
+            when.method(GET)
+                .path("/company/custom-properties")
+                .query_param("query", "Story Point")
+                .query_param("compact", "true");
+            then.status(200).json_body_obj(&properties);
+        });
+        let update = server.mock(|when, then| {
+            when.method(PATCH);
+            then.status(200);
+        });
+
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "update", "123", "--story-points", "5"])
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success());
+        assert!(
+            stderr(&output).contains(expected_error),
+            "unexpected error: {}",
+            stderr(&output)
+        );
+        assert_eq!(property.calls(), 1);
+        assert_eq!(update.calls(), 0);
+    }
+}
+
+#[test]
+fn card_update_rejects_duplicate_custom_property_before_http() {
+    let server = MockServer::start();
+    let requests = server.mock(|when, then| {
+        when.method(GET);
+        then.status(500);
+    });
+    let updates = server.mock(|when, then| {
+        when.method(PATCH);
+        then.status(500);
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args([
+            "card",
+            "update",
+            "123",
+            "--custom-property",
+            "Cost=1",
+            "--custom-property",
+            "Cost=2",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("custom property names must not be repeated"));
+    assert_eq!(requests.calls(), 0);
+    assert_eq!(updates.calls(), 0);
 }
 
 #[test]
 fn card_update_clears_story_points_and_prints_json() {
     let server = MockServer::start();
-    let mock = server.mock(|when, then| {
+    let property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Story Point")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 42,
+            "name": "Story Point",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
+        when.method(PATCH)
+            .path("/cards/123")
+            .json_body_obj(&serde_json::json!({
+                "properties": {"id_42": null}
+            }));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "properties": {"id_42": null}
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "update", "123", "--story-points", "", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["properties"]["id_42"], serde_json::Value::Null);
+    assert_eq!(property.calls(), 1);
+    assert_eq!(update.calls(), 1);
+}
+
+#[test]
+fn card_update_clears_size_and_prints_json() {
+    let server = MockServer::start();
+    let update = server.mock(|when, then| {
         when.method(PATCH)
             .path("/cards/123")
             .json_body_obj(&serde_json::json!({"size_text": null}));
@@ -481,20 +758,24 @@ fn card_update_clears_story_points_and_prints_json() {
         .env("KTEN_HOSTNAME", "company.kaiten.ru")
         .env("KTEN_TOKEN", "secret-token")
         .env("KTEN_TEST_API_BASE", server.url(""))
-        .args(["card", "update", "123", "--story-points", "", "--json"])
+        .args(["card", "update", "123", "--size", "", "--json"])
         .output()
         .unwrap();
 
     assert!(output.status.success(), "{}", stderr(&output));
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(json["size_text"], serde_json::Value::Null);
-    assert_eq!(mock.calls(), 1);
+    assert_eq!(update.calls(), 1);
 }
 
 #[test]
 fn card_update_rejects_invalid_story_points_before_http() {
     let server = MockServer::start();
-    let mock = server.mock(|when, then| {
+    let reads = server.mock(|when, then| {
+        when.method(GET);
+        then.status(500);
+    });
+    let updates = server.mock(|when, then| {
         when.method(PATCH);
         then.status(200).json_body_obj(&serde_json::json!({
             "id": 123,
@@ -519,26 +800,58 @@ fn card_update_rejects_invalid_story_points_before_http() {
         );
     }
 
-    assert_eq!(mock.calls(), 0);
+    assert_eq!(reads.calls(), 0);
+    assert_eq!(updates.calls(), 0);
+}
+
+#[test]
+fn card_update_help_distinguishes_story_points_size_and_custom_properties() {
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .args(["card", "update", "--help"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("--story-points <NUMBER>"));
+    assert!(stdout.contains("Custom 'Story Point' number"));
+    assert!(stdout.contains("--size <NUMBER>"));
+    assert!(stdout.contains("Kaiten Size"));
+    assert!(stdout.contains("--custom-property <NAME=JSON>"));
+    assert!(stdout.contains("repeat to update multiple properties"));
 }
 
 #[test]
 fn card_update_combines_story_points_with_other_fields() {
     let server = MockServer::start();
-    let mock = server.mock(|when, then| {
+    let property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Story Point")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 42,
+            "name": "Story Point",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
         when.method(PATCH)
             .path("/cards/123")
             .json_body_obj(&serde_json::json!({
                 "description": "Estimated",
                 "asap": true,
-                "size_text": "3.5"
+                "size_text": "8",
+                "properties": {"id_42": 3.5}
             }));
         then.status(200).json_body_obj(&serde_json::json!({
             "id": 123,
             "title": "Fix login",
             "description": "Estimated",
             "asap": true,
-            "size_text": "3.5"
+            "size_text": "8",
+            "properties": {"id_42": 3.5}
         }));
     });
 
@@ -556,6 +869,8 @@ fn card_update_combines_story_points_with_other_fields() {
             "high",
             "--story-points",
             "3.5",
+            "--size",
+            "8",
             "--json",
         ])
         .output()
@@ -565,17 +880,33 @@ fn card_update_combines_story_points_with_other_fields() {
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(json["description"], "Estimated");
     assert_eq!(json["asap"], true);
-    assert_eq!(json["size_text"], "3.5");
-    assert_eq!(mock.calls(), 1);
+    assert_eq!(json["size_text"], "8");
+    assert_eq!(json["properties"]["id_42"], 3.5);
+    assert_eq!(property.calls(), 1);
+    assert_eq!(update.calls(), 1);
 }
 
 #[test]
 fn card_update_story_points_does_not_retry_failed_patch() {
     let server = MockServer::start();
-    let mock = server.mock(|when, then| {
+    let property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Story Point")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 42,
+            "name": "Story Point",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
         when.method(PATCH)
             .path("/cards/123")
-            .json_body_obj(&serde_json::json!({"size_text": "5"}));
+            .json_body_obj(&serde_json::json!({
+                "properties": {"id_42": 5}
+            }));
         then.status(429).body("rate limited");
     });
 
@@ -589,7 +920,8 @@ fn card_update_story_points_does_not_retry_failed_patch() {
 
     assert!(!output.status.success());
     assert!(stderr(&output).contains("429"));
-    assert_eq!(mock.calls(), 1);
+    assert_eq!(property.calls(), 1);
+    assert_eq!(update.calls(), 1);
 }
 
 #[test]

@@ -1,6 +1,8 @@
 mod skills;
 
-use std::{env, fs, io::Read, path::PathBuf, process::Command, str::FromStr};
+use std::{
+    collections::BTreeMap, env, fs, io::Read, path::PathBuf, process::Command, str::FromStr,
+};
 
 use anyhow::Context;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -15,6 +17,8 @@ use kten_core::{
     render,
 };
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+
+const STORY_POINTS_PROPERTY_NAME: &str = "Story Point";
 
 #[derive(Debug, Parser)]
 #[command(name = "kten", version, about = "Unofficial Kaiten developer tool")]
@@ -143,19 +147,19 @@ enum CardCommand {
     },
     #[command(
         about = "Update an existing card",
-        after_help = "Examples:\n  kten card update 123 --story-points 5\n  kten card update 123 --story-points \"\" --json"
+        after_help = "Examples:\n  kten card update 123 --story-points 5\n  kten card update 123 --size 5\n  kten card update 123 --custom-property 'Cost of Delay=8.5'\n  kten card update 123 --custom-property 'Release Train=\"R2\"'\n  kten card update 123 --story-points \"\" --json"
     )]
     Update {
         id: u64,
         #[arg(
             long,
-            required_unless_present_any = ["priority", "story_points"],
+            required_unless_present_any = ["priority", "story_points", "size", "custom_property"],
             help = "Card description; pass an empty string to clear it"
         )]
         description: Option<String>,
         #[arg(
             long,
-            required_unless_present_any = ["description", "story_points"],
+            required_unless_present_any = ["description", "story_points", "size", "custom_property"],
             help = "Card priority"
         )]
         priority: Option<CardPriority>,
@@ -164,10 +168,27 @@ enum CardCommand {
             value_name = "NUMBER",
             value_parser = parse_story_points,
             allow_hyphen_values = true,
-            required_unless_present_any = ["description", "priority"],
-            help = "Non-negative finite story points; pass an empty string to clear them"
+            required_unless_present_any = ["description", "priority", "size", "custom_property"],
+            help = "Custom 'Story Point' number; pass an empty string to clear it"
         )]
         story_points: Option<String>,
+        #[arg(
+            long,
+            value_name = "NUMBER",
+            value_parser = parse_size,
+            allow_hyphen_values = true,
+            required_unless_present_any = ["description", "priority", "story_points", "custom_property"],
+            help = "Non-negative finite Kaiten Size; pass an empty string to clear it"
+        )]
+        size: Option<String>,
+        #[arg(
+            long,
+            value_name = "NAME=JSON",
+            value_parser = parse_custom_property,
+            required_unless_present_any = ["description", "priority", "story_points", "size"],
+            help = "Custom property NAME=JSON assignment; repeat to update multiple properties"
+        )]
+        custom_property: Vec<CustomPropertyAssignment>,
         #[arg(long)]
         json: bool,
     },
@@ -264,6 +285,96 @@ fn parse_story_points(value: &str) -> Result<String, String> {
         return Err("story points must be a finite non-negative number".to_string());
     }
     Ok(value.to_string())
+}
+
+fn parse_size(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let size = value
+        .parse::<f64>()
+        .map_err(|_| "size must be a finite non-negative number".to_string())?;
+    if !size.is_finite() || size < 0.0 {
+        return Err("size must be a finite non-negative number".to_string());
+    }
+    Ok(value.to_string())
+}
+
+#[derive(Debug, Clone)]
+struct CustomPropertyAssignment {
+    name: String,
+    value: serde_json::Value,
+    expected_type: Option<&'static str>,
+}
+
+fn parse_custom_property(value: &str) -> Result<CustomPropertyAssignment, String> {
+    let (name, value) = value
+        .split_once('=')
+        .ok_or_else(|| "custom property must use NAME=JSON format".to_string())?;
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() {
+        return Err("custom property name must not be empty".to_string());
+    }
+    if value.is_empty() {
+        return Err("custom property value must be JSON; use null to clear it".to_string());
+    }
+    let value = serde_json::from_str(value)
+        .map_err(|error| format!("custom property value must be valid JSON: {error}"))?;
+    Ok(CustomPropertyAssignment {
+        name: name.to_string(),
+        value,
+        expected_type: None,
+    })
+}
+
+async fn resolve_custom_property_updates(
+    client: &KaitenClient,
+    assignments: Vec<CustomPropertyAssignment>,
+) -> anyhow::Result<(
+    Option<BTreeMap<String, serde_json::Value>>,
+    Vec<(String, serde_json::Value)>,
+)> {
+    let mut unique = BTreeMap::new();
+    for assignment in assignments {
+        if unique.insert(assignment.name.clone(), assignment).is_some() {
+            anyhow::bail!("custom property names must not be repeated");
+        }
+    }
+
+    let mut properties = BTreeMap::new();
+    let mut updated = Vec::new();
+    for assignment in unique.into_values() {
+        let matches = client
+            .custom_properties(&assignment.name)
+            .await?
+            .into_iter()
+            .filter(|property| {
+                property.name == assignment.name
+                    && property.condition.as_deref() != Some("inactive")
+            })
+            .collect::<Vec<_>>();
+        let [property] = matches.as_slice() else {
+            anyhow::bail!(
+                "expected exactly one active custom property named {:?}, found {}",
+                assignment.name,
+                matches.len()
+            );
+        };
+        if let Some(expected_type) = assignment.expected_type
+            && property.property_type != expected_type
+        {
+            anyhow::bail!(
+                "custom property {:?} must have type {expected_type}, found {:?}",
+                assignment.name,
+                property.property_type
+            );
+        }
+        properties.insert(format!("id_{}", property.id), assignment.value.clone());
+        updated.push((assignment.name, assignment.value));
+    }
+
+    Ok(((!properties.is_empty()).then_some(properties), updated))
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -745,8 +856,26 @@ async fn run_card(
             description,
             priority,
             story_points,
+            size,
+            custom_property,
             json,
         } => {
+            let mut custom_property = custom_property;
+            if let Some(points) = story_points {
+                let value = if points.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::from_str(&points)
+                        .context("validated story points must be a JSON number")?
+                };
+                custom_property.push(CustomPropertyAssignment {
+                    name: STORY_POINTS_PROPERTY_NAME.to_string(),
+                    value,
+                    expected_type: Some("number"),
+                });
+            }
+            let (properties, updated_custom_properties) =
+                resolve_custom_property_updates(client, custom_property).await?;
             let card = client
                 .update_card(
                     id,
@@ -754,14 +883,20 @@ async fn run_card(
                         description: description
                             .map(|description| (!description.is_empty()).then_some(description)),
                         asap: priority.map(CardPriority::is_asap),
-                        size_text: story_points
-                            .map(|points| (!points.is_empty()).then_some(points)),
+                        size_text: size.map(|size| (!size.is_empty()).then_some(size)),
+                        properties,
                     },
                 )
                 .await?;
             print_data(
                 json,
-                || render::card_human(&card, &effective.card_url(id)),
+                || {
+                    render::card_update_human(
+                        &card,
+                        &effective.card_url(id),
+                        &updated_custom_properties,
+                    )
+                },
                 &card,
             )
         }
