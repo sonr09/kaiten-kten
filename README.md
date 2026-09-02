@@ -300,6 +300,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+## Releasing
+
+Before creating `vX.Y.Z`, update `[workspace.package].version` in `Cargo.toml`
+to `X.Y.Z` and refresh `Cargo.lock`. Verify the packaged CLI version and all
+quality gates before committing and tagging:
+
+```sh
+cargo check --workspace
+cargo run --locked --package kten-cli --bin kten -- --version
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+git tag -a vX.Y.Z -m "release vX.Y.Z"
+git push --atomic origin main vX.Y.Z
+```
+
+The release workflow rejects a `vX.Y.Z` tag when it does not match the
+`kten-cli` package version. Published tags must not be moved; release a new
+patch version instead.
+
 Card creation, card updates, adding card members, and adding comments are the
 supported Kaiten write operations. `kten` does not automatically retry mutation
 requests. This is especially important for card creation and comment addition,

@@ -27,6 +27,22 @@ jobs:
           rustup toolchain install 1.95.0 --profile minimal
           rustup target add "$TARGET" --toolchain 1.95.0
 
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 |
+              python3 -c 'import json, sys; data = json.load(sys.stdin); print(next(package["version"] for package in data["packages"] if package["name"] == "kten-cli"))'
+          )"
+          expected_version="${RELEASE_TAG#v}"
+          if [[ "$package_version" != "$expected_version" ]]; then
+            echo "::error::Release tag $RELEASE_TAG does not match kten-cli version $package_version"
+            exit 1
+          fi
+
       - name: Build release binary
         run: cargo build --locked --release --package kten-cli --bin kten --target "$TARGET"
 
