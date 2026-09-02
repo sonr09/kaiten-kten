@@ -479,6 +479,85 @@ fn card_update_sets_story_points_and_prints_human_output() {
 }
 
 #[test]
+fn card_update_sets_task_priority_custom_property() {
+    let server = MockServer::start();
+    let property = server.mock(|when, then| {
+        when.method(GET)
+            .path("/company/custom-properties")
+            .query_param("query", "Приоритет задачи")
+            .query_param("compact", "true");
+        then.status(200).json_body_obj(&serde_json::json!([{
+            "id": 84,
+            "name": "Приоритет задачи",
+            "type": "number",
+            "condition": "active"
+        }]));
+    });
+    let update = server.mock(|when, then| {
+        when.method(PATCH)
+            .path("/cards/123")
+            .json_body_obj(&serde_json::json!({
+                "properties": {"id_84": 73}
+            }));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Fix login",
+            "properties": {"id_84": 73}
+        }));
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "update", "123", "--task-priority", "73"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Updated custom property Приоритет задачи: 73")
+    );
+    assert_eq!(property.calls(), 1);
+    assert_eq!(update.calls(), 1);
+}
+
+#[test]
+fn card_update_rejects_invalid_task_priority_before_http() {
+    let server = MockServer::start();
+    let reads = server.mock(|when, then| {
+        when.method(GET);
+        then.status(500);
+    });
+    let updates = server.mock(|when, then| {
+        when.method(PATCH);
+        then.status(500);
+    });
+
+    for value in ["0", "101", "-1", "1.5", "high", ""] {
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "update", "123", "--task-priority", value])
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success(), "accepted {value:?}");
+        assert!(
+            stderr(&output).contains("task priority must be an integer from 1 to 100"),
+            "unexpected error for {value:?}: {}",
+            stderr(&output)
+        );
+    }
+
+    assert_eq!(reads.calls(), 0);
+    assert_eq!(updates.calls(), 0);
+}
+
+#[test]
 fn card_update_sets_size_and_prints_human_output() {
     let server = MockServer::start();
     let update = server.mock(|when, then| {
@@ -815,6 +894,8 @@ fn card_update_help_distinguishes_story_points_size_and_custom_properties() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("--story-points <NUMBER>"));
     assert!(stdout.contains("Custom 'Story Point' number"));
+    assert!(stdout.contains("--task-priority <1..100>"));
+    assert!(stdout.contains("custom 'Приоритет задачи' number"));
     assert!(stdout.contains("--size <NUMBER>"));
     assert!(stdout.contains("Kaiten Size"));
     assert!(stdout.contains("--custom-property <NAME=JSON>"));

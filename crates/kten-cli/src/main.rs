@@ -19,6 +19,7 @@ use kten_core::{
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 const STORY_POINTS_PROPERTY_NAME: &str = "Story Point";
+const TASK_PRIORITY_PROPERTY_NAME: &str = "Приоритет задачи";
 
 #[derive(Debug, Parser)]
 #[command(name = "kten", version, about = "Unofficial Kaiten developer tool")]
@@ -147,19 +148,19 @@ enum CardCommand {
     },
     #[command(
         about = "Update an existing card",
-        after_help = "Examples:\n  kten card update 123 --story-points 5\n  kten card update 123 --size 5\n  kten card update 123 --custom-property 'Cost of Delay=8.5'\n  kten card update 123 --custom-property 'Release Train=\"R2\"'\n  kten card update 123 --story-points \"\" --json"
+        after_help = "Examples:\n  kten card update 123 --story-points 5\n  kten card update 123 --task-priority 73\n  kten card update 123 --size 5\n  kten card update 123 --custom-property 'Cost of Delay=8.5'\n  kten card update 123 --custom-property 'Release Train=\"R2\"'\n  kten card update 123 --story-points \"\" --json"
     )]
     Update {
         id: u64,
         #[arg(
             long,
-            required_unless_present_any = ["priority", "story_points", "size", "custom_property"],
+            required_unless_present_any = ["priority", "story_points", "task_priority", "size", "custom_property"],
             help = "Card description; pass an empty string to clear it"
         )]
         description: Option<String>,
         #[arg(
             long,
-            required_unless_present_any = ["description", "story_points", "size", "custom_property"],
+            required_unless_present_any = ["description", "story_points", "task_priority", "size", "custom_property"],
             help = "Card priority"
         )]
         priority: Option<CardPriority>,
@@ -168,16 +169,25 @@ enum CardCommand {
             value_name = "NUMBER",
             value_parser = parse_story_points,
             allow_hyphen_values = true,
-            required_unless_present_any = ["description", "priority", "size", "custom_property"],
+            required_unless_present_any = ["description", "priority", "task_priority", "size", "custom_property"],
             help = "Custom 'Story Point' number; pass an empty string to clear it"
         )]
         story_points: Option<String>,
         #[arg(
             long,
+            value_name = "1..100",
+            value_parser = parse_task_priority,
+            allow_hyphen_values = true,
+            required_unless_present_any = ["description", "priority", "story_points", "size", "custom_property"],
+            help = "Integer from 1 to 100 for custom 'Приоритет задачи' number"
+        )]
+        task_priority: Option<u8>,
+        #[arg(
+            long,
             value_name = "NUMBER",
             value_parser = parse_size,
             allow_hyphen_values = true,
-            required_unless_present_any = ["description", "priority", "story_points", "custom_property"],
+            required_unless_present_any = ["description", "priority", "story_points", "task_priority", "custom_property"],
             help = "Non-negative finite Kaiten Size; pass an empty string to clear it"
         )]
         size: Option<String>,
@@ -185,7 +195,7 @@ enum CardCommand {
             long,
             value_name = "NAME=JSON",
             value_parser = parse_custom_property,
-            required_unless_present_any = ["description", "priority", "story_points", "size"],
+            required_unless_present_any = ["description", "priority", "story_points", "task_priority", "size"],
             help = "Custom property NAME=JSON assignment; repeat to update multiple properties"
         )]
         custom_property: Vec<CustomPropertyAssignment>,
@@ -298,6 +308,16 @@ fn parse_size(value: &str) -> Result<String, String> {
         return Err("size must be a finite non-negative number".to_string());
     }
     Ok(value.to_string())
+}
+
+fn parse_task_priority(value: &str) -> Result<u8, String> {
+    let priority = value
+        .parse::<u8>()
+        .map_err(|_| "task priority must be an integer from 1 to 100".to_string())?;
+    if !(1..=100).contains(&priority) {
+        return Err("task priority must be an integer from 1 to 100".to_string());
+    }
+    Ok(priority)
 }
 
 #[derive(Debug, Clone)]
@@ -856,6 +876,7 @@ async fn run_card(
             description,
             priority,
             story_points,
+            task_priority,
             size,
             custom_property,
             json,
@@ -871,6 +892,13 @@ async fn run_card(
                 custom_property.push(CustomPropertyAssignment {
                     name: STORY_POINTS_PROPERTY_NAME.to_string(),
                     value,
+                    expected_type: Some("number"),
+                });
+            }
+            if let Some(priority) = task_priority {
+                custom_property.push(CustomPropertyAssignment {
+                    name: TASK_PRIORITY_PROPERTY_NAME.to_string(),
+                    value: serde_json::Value::from(priority),
                     expected_type: Some("number"),
                 });
             }

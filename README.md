@@ -96,6 +96,7 @@ kten card update 12345 --description "Updated acceptance criteria"
 kten card update 12345 --description "" # clear description
 kten card update 12345 --priority high
 kten card update 12345 --priority normal
+kten card update 12345 --task-priority 73 # custom field named Приоритет задачи
 kten card update 12345 --story-points 5 # custom field named Story Point
 kten card update 12345 --story-points "" # clear custom Story Point
 kten card update 12345 --size 5 # built-in Kaiten Size
@@ -180,6 +181,12 @@ number property named exactly `Story Point` and updates it through Kaiten's
 `properties.id_<property-id>` field. It accepts a finite number greater than or
 equal to zero; pass an empty string to clear it. Missing, duplicate, inactive,
 or non-numeric `Story Point` definitions are rejected before the PATCH request.
+
+`kten card update <card-id> --task-priority <1..100>` resolves the active custom
+number property named exactly `Приоритет задачи`. Only integers from 1 through
+100 are accepted; invalid values are rejected before any HTTP request. This is
+separate from `--priority high|normal`, which controls Kaiten's built-in `asap`
+flag.
 
 The built-in Kaiten Size remains available as `--size <number>` and maps to
 `size_text`; pass an empty string to clear it. Use repeatable

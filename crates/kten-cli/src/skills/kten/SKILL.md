@@ -21,7 +21,9 @@ surface.
 - Card updates change Kaiten state. Run `kten card update` only when the user
   clearly asked for the change and the card ID and new value are known. An empty
   `--story-points` value clears the custom `Story Point` field. `--size` changes
-  Kaiten's separate built-in Size field. Confirm which field the user means.
+  Kaiten's separate built-in Size field. `--task-priority` changes the numeric
+  custom `Приоритет задачи` field, while `--priority` changes the built-in ASAP
+  marker. Confirm which field the user means.
 - Adding a comment changes Kaiten state. Run `kten card comment add` only when
   the user clearly asked for it and the card ID and exact text are known.
 - Do not retry a failed card creation or comment addition automatically: the
@@ -54,6 +56,7 @@ kten card create --title "Card title" --board <board-id> --column <column-id> --
 kten card update <card-id> --description "New description" --json
 kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
+kten card update <card-id> --task-priority 73 --json
 kten card update <card-id> --story-points 5 --json
 kten card update <card-id> --story-points "" --json
 kten card update <card-id> --size 5 --json
@@ -112,6 +115,15 @@ To set or clear the high-priority marker after an explicit user request:
 kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
 ```
+
+To set the numeric custom property named exactly `Приоритет задачи`:
+
+```sh
+kten card update <card-id> --task-priority 73 --json
+```
+
+The value must be an integer from 1 through 100. This field is separate from
+the built-in ASAP marker controlled by `--priority high|normal`.
 
 To set or clear numeric Story Points after an explicit user request:
 
