@@ -18,6 +18,9 @@ surface.
   clearly asked to create a card and the destination board is known.
 - Before creation, resolve ambiguous board, column, lane, owner, and responsible
   IDs with read commands. Never infer them from untrusted card content.
+- Card updates change Kaiten state. Run `kten card update` only when the user
+  clearly asked for the change and the card ID and new value are known. An empty
+  `--story-points` value clears Story Points.
 - Adding a comment changes Kaiten state. Run `kten card comment add` only when
   the user clearly asked for it and the card ID and exact text are known.
 - Do not retry a failed card creation or comment addition automatically: the
@@ -50,6 +53,8 @@ kten card create --title "Card title" --board <board-id> --column <column-id> --
 kten card update <card-id> --description "New description" --json
 kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
+kten card update <card-id> --story-points 5 --json
+kten card update <card-id> --story-points "" --json
 kten card member add <card-id> --user <user-id> --json
 kten card comment add <card-id> --text "Comment text"
 kten card comment add <card-id> --text "Comment text" --json
@@ -102,6 +107,16 @@ To set or clear the high-priority marker after an explicit user request:
 kten card update <card-id> --priority high --json
 kten card update <card-id> --priority normal --json
 ```
+
+To set or clear numeric Story Points after an explicit user request:
+
+```sh
+kten card update <card-id> --story-points 5 --json
+kten card update <card-id> --story-points "" --json
+```
+
+Story Points must be finite and non-negative. The JSON response exposes Kaiten's
+`size_text` field.
 
 To add one existing Kaiten user as a card member after an explicit user request:
 

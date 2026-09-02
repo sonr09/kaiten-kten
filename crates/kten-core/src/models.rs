@@ -5,6 +5,8 @@ pub struct Card {
     pub id: u64,
     pub title: Option<String>,
     pub description: Option<String>,
+    #[serde(default)]
+    pub size_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asap: Option<bool>,
     #[serde(default)]
@@ -53,6 +55,8 @@ pub struct UpdateCardRequest {
     pub description: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asap: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_text: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

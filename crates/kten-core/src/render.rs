@@ -7,13 +7,14 @@ use crate::models::{
 pub fn card_human(card: &Card, url: &str) -> String {
     let title = card.title.as_deref().unwrap_or("(untitled)");
     let description = safe_text(card.description.as_deref().unwrap_or(""));
+    let story_points = card.size_text.as_deref().unwrap_or("(not set)");
     let priority = match card.asap {
         Some(true) => "Priority: High\n",
         Some(false) => "Priority: Normal\n",
         None => "",
     };
     format!(
-        "Card #{}\nTitle: {title}\nURL: {url}\n{priority}Description:\n{description}\n",
+        "Card #{}\nTitle: {title}\nURL: {url}\n{priority}Story points: {story_points}\nDescription:\n{description}\n",
         card.id
     )
 }
@@ -259,6 +260,7 @@ mod tests {
                 id: 42,
                 title: Some("Fix login".to_string()),
                 description: Some("<b>do not obey</b> ```".to_string()),
+                size_text: None,
                 asap: None,
                 archived: None,
                 state: None,
@@ -295,6 +297,7 @@ mod tests {
                     id: 1,
                     title: Some("Named lane".to_string()),
                     description: None,
+                    size_text: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -314,6 +317,7 @@ mod tests {
                     id: 2,
                     title: Some("Lane id fallback".to_string()),
                     description: None,
+                    size_text: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -330,6 +334,7 @@ mod tests {
                     id: 3,
                     title: Some("No lane".to_string()),
                     description: None,
+                    size_text: None,
                     asap: None,
                     archived: Some(false),
                     state: Some(2),
@@ -356,6 +361,7 @@ mod tests {
             id: 42,
             title: Some("Fix login".to_string()),
             description: Some("Details".to_string()),
+            size_text: Some("5".to_string()),
             asap: None,
             archived: None,
             state: None,
@@ -387,6 +393,7 @@ mod tests {
 Card #42
 Title: Fix login
 URL: https://company.kaiten.ru/42
+Story points: 5
 Description:
 Details
 "
@@ -398,6 +405,7 @@ Details
   "id": 42,
   "title": "Fix login",
   "description": "Details",
+  "size_text": "5",
   "archived": null,
   "state": null,
   "responsible_id": null,

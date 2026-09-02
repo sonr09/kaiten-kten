@@ -4,8 +4,8 @@
 It is not affiliated with, endorsed by, or supported by Kaiten.
 
 The tool is CLI-first and also provides a stdio MCP server for AI agents.
-It covers auth, config, card reads and creation, comments, search, spaces,
-boards, shell completion, and MCP tools.
+It covers auth, config, card reads, creation and updates, comments, search,
+spaces, boards, shell completion, and MCP tools.
 
 ## Install
 
@@ -96,6 +96,8 @@ kten card update 12345 --description "Updated acceptance criteria"
 kten card update 12345 --description "" # clear description
 kten card update 12345 --priority high
 kten card update 12345 --priority normal
+kten card update 12345 --story-points 5
+kten card update 12345 --story-points "" # clear Story Points
 kten card member add 12345 --user 42
 kten card comment add 12345 --text "Ready for review"
 kten card comment add 12345 --text "Ready for review" --json
@@ -146,7 +148,7 @@ all other commands are read-only:
 | Auth validation | `GET /users/current` |
 | Card view | `GET /cards/{card_id}` |
 | Card creation | `POST /cards` |
-| Card description and priority updates | `PATCH /cards/{card_id}` |
+| Card description, priority, and Story Points updates | `PATCH /cards/{card_id}` |
 | Add card member | `POST /cards/{card_id}/members` |
 | Add card comment | `POST /cards/{card_id}/comments` |
 | Card search | `GET /cards` |
@@ -166,6 +168,12 @@ at least one non-whitespace character. It sends one POST with a JSON body of
 `{"text":"..."}` and returns the created comment. A failed POST is not retried
 automatically because the comment might already have been created and a retry
 could add a duplicate.
+
+`kten card update <card-id> --story-points <number>` accepts a finite number
+greater than or equal to zero and sends it as Kaiten's `size_text` field. Pass
+an empty string to clear the value. Human output shows `Story points`, while
+`--json` returns the updated card with its machine-readable `size_text` field.
+Invalid values are rejected before the PATCH request.
 
 Card search uses `GET /cards` with filters such as `query`, `space_id`,
 `board_id`, `limit`, and `additional_card_fields=description`. Kaiten also
@@ -293,8 +301,9 @@ cargo test --workspace
 ```
 
 Card creation, card updates, adding card members, and adding comments are the
-supported Kaiten write operations. `kten` does not automatically retry card
-creation or comment addition because a retry could create a duplicate.
+supported Kaiten write operations. `kten` does not automatically retry mutation
+requests. This is especially important for card creation and comment addition,
+where a retry could create a duplicate.
 It has no telemetry and no crates.io publishing configuration.
 
 ## License

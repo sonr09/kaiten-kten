@@ -141,16 +141,33 @@ enum CardCommand {
         #[command(subcommand)]
         command: CardCommentCommand,
     },
+    #[command(
+        about = "Update an existing card",
+        after_help = "Examples:\n  kten card update 123 --story-points 5\n  kten card update 123 --story-points \"\" --json"
+    )]
     Update {
         id: u64,
         #[arg(
             long,
-            required_unless_present = "priority",
+            required_unless_present_any = ["priority", "story_points"],
             help = "Card description; pass an empty string to clear it"
         )]
         description: Option<String>,
-        #[arg(long, required_unless_present = "description", help = "Card priority")]
+        #[arg(
+            long,
+            required_unless_present_any = ["description", "story_points"],
+            help = "Card priority"
+        )]
         priority: Option<CardPriority>,
+        #[arg(
+            long,
+            value_name = "NUMBER",
+            value_parser = parse_story_points,
+            allow_hyphen_values = true,
+            required_unless_present_any = ["description", "priority"],
+            help = "Non-negative finite story points; pass an empty string to clear them"
+        )]
+        story_points: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -232,6 +249,19 @@ fn parse_positive_card_id(value: &str) -> Result<u64, String> {
 fn parse_comment_text(value: &str) -> Result<String, String> {
     if value.trim().is_empty() {
         return Err("comment text must not be empty".to_string());
+    }
+    Ok(value.to_string())
+}
+
+fn parse_story_points(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let points = value
+        .parse::<f64>()
+        .map_err(|_| "story points must be a finite non-negative number".to_string())?;
+    if !points.is_finite() || points < 0.0 {
+        return Err("story points must be a finite non-negative number".to_string());
     }
     Ok(value.to_string())
 }
@@ -714,6 +744,7 @@ async fn run_card(
             id,
             description,
             priority,
+            story_points,
             json,
         } => {
             let card = client
@@ -723,6 +754,8 @@ async fn run_card(
                         description: description
                             .map(|description| (!description.is_empty()).then_some(description)),
                         asap: priority.map(CardPriority::is_asap),
+                        size_text: story_points
+                            .map(|points| (!points.is_empty()).then_some(points)),
                     },
                 )
                 .await?;

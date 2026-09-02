@@ -79,6 +79,7 @@ impl KaitenClient {
             &UpdateCardRequest {
                 description: Some(description),
                 asap: None,
+                size_text: None,
             },
         )
         .await
@@ -549,6 +550,7 @@ mod tests {
                 id: 1,
                 title: Some("Release".to_string()),
                 description: Some("snippet".to_string()),
+                size_text: None,
                 asap: None,
                 archived: None,
                 state: None,
