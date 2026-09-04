@@ -47,6 +47,9 @@ kten_list_boards
 kten_get_board
 ```
 
+`kten_get_card_context` includes the card's parent and child relations when
+Kaiten returns them. Relation changes remain available only through the CLI.
+
 ## Client Configs
 
 Codex:

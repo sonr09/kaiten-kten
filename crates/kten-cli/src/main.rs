@@ -141,6 +141,14 @@ enum CardCommand {
         #[command(subcommand)]
         command: CardMemberCommand,
     },
+    #[command(
+        about = "Manage child card relations",
+        after_help = "Examples:\n  kten card child add 123 --child 456\n  kten card child remove 123 --child 456 --json"
+    )]
+    Child {
+        #[command(subcommand)]
+        command: CardChildCommand,
+    },
     #[command(about = "Manage card comments")]
     Comment {
         #[command(subcommand)]
@@ -247,6 +255,35 @@ enum CardMemberCommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+enum CardChildCommand {
+    #[command(
+        about = "Add a child card relation",
+        long_about = "Add a child card relation.\n\nFailed POST requests are not retried automatically because the relation might already have been created.",
+        after_help = "Example:\n  kten card child add 123 --child 456 --json"
+    )]
+    Add {
+        #[arg(value_name = "PARENT_CARD_ID", value_parser = parse_positive_card_id)]
+        id: u64,
+        #[arg(long, value_name = "CHILD_CARD_ID", value_parser = parse_positive_card_id)]
+        child: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Remove a child card relation",
+        after_help = "Example:\n  kten card child remove 123 --child 456 --json"
+    )]
+    Remove {
+        #[arg(value_name = "PARENT_CARD_ID", value_parser = parse_positive_card_id)]
+        id: u64,
+        #[arg(long, value_name = "CHILD_CARD_ID", value_parser = parse_positive_card_id)]
+        child: u64,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 enum CardCommentCommand {
     #[command(
         about = "Add one comment to an existing card",
@@ -275,6 +312,13 @@ fn parse_positive_card_id(value: &str) -> Result<u64, String> {
         return Err("card ID must be a positive integer".to_string());
     }
     Ok(id)
+}
+
+fn validate_card_relation_ids(parent_id: u64, child_id: u64) -> anyhow::Result<()> {
+    if parent_id == child_id {
+        anyhow::bail!("parent and child card IDs must be different");
+    }
+    Ok(())
 }
 
 fn parse_comment_text(value: &str) -> Result<String, String> {
@@ -851,6 +895,22 @@ async fn run_card(
             CardMemberCommand::Add { id, user, json } => {
                 let member = client.add_card_member(id, user).await?;
                 print_data(json, || render::card_member_human(id, &member), &member)
+            }
+        },
+        CardCommand::Child { command } => match command {
+            CardChildCommand::Add { id, child, json } => {
+                validate_card_relation_ids(id, child)?;
+                let card = client.add_card_child(id, child).await?;
+                print_data(json, || render::card_child_added_human(id, child), &card)
+            }
+            CardChildCommand::Remove { id, child, json } => {
+                validate_card_relation_ids(id, child)?;
+                let response = client.remove_card_child(id, child).await?;
+                print_data(
+                    json,
+                    || render::card_child_removed_human(id, child),
+                    &response,
+                )
             }
         },
         CardCommand::Comment { command } => match command {

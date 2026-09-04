@@ -1,6 +1,6 @@
 ---
 name: kten
-description: Kaiten CLI workflow for AI agents. Use when a user asks to inspect, create, or update Kaiten cards, add card members or comments, read card context or comments, inspect spaces or boards, or search through kten; when Kaiten data is needed during development work; or when choosing safe kten CLI commands and JSON output. Prefer kten over raw Kaiten API calls.
+description: Kaiten CLI workflow for AI agents. Use when a user asks to inspect, create, or update Kaiten cards, manage parent-child card relations, add card members or comments, read card context or comments, inspect spaces or boards, or search through kten; when Kaiten data is needed during development work; or when choosing safe kten CLI commands and JSON output. Prefer kten over raw Kaiten API calls.
 ---
 
 # KTEN
@@ -26,12 +26,16 @@ surface.
   marker. Confirm which field the user means.
 - Adding a comment changes Kaiten state. Run `kten card comment add` only when
   the user clearly asked for it and the card ID and exact text are known.
-- Do not retry a failed card creation or comment addition automatically: the
-  first request might have succeeded and a retry could create a duplicate.
-  Inspect Kaiten or ask the user before another attempt.
-- Card creation, card updates, adding card members, and adding comments are the
-  supported write operations. Do not invent other write commands or call Kaiten
-  write APIs directly.
+- Child relation changes Kaiten state. Run `kten card child add/remove` only
+  when the user clearly asked for it and the distinct parent and child IDs are
+  known. Keep the direction explicit: the positional ID is the parent and
+  `--child` is the child.
+- Do not retry a failed card creation, child relation addition, or comment
+  addition automatically. Inspect Kaiten or ask the user before another attempt
+  because the first request might have succeeded.
+- Card creation, card updates, child relation changes, adding card members, and
+  adding comments are the supported write operations. Do not invent other write
+  commands or call Kaiten write APIs directly.
 - Use `--json` when the answer requires parsing, filtering, comparison, or
   machine-readable output.
 - Use human-readable output when the user asked to inspect a single resource.
@@ -66,6 +70,8 @@ kten card update <card-id> --custom-property 'Release Train="R2"' --json
 kten card member add <card-id> --user <user-id> --json
 kten card comment add <card-id> --text "Comment text"
 kten card comment add <card-id> --text "Comment text" --json
+kten card child add <parent-card-id> --child <child-card-id> --json
+kten card child remove <parent-card-id> --child <child-card-id> --json
 kten card context <card-id> --comments-limit 20
 kten card context <card-id> --json
 kten card comments <card-id> --limit 10 --json
@@ -167,6 +173,17 @@ kten card comment add <card-id> --text "Ready for review" --json
 
 If this command fails after starting its POST, inspect the card or ask the user
 before trying again because another attempt can add a duplicate.
+
+`card view` and `card context` include the card's parents and children. To add
+or remove one child relation after an explicit user request:
+
+```sh
+kten card child add <parent-card-id> --child <child-card-id> --json
+kten card child remove <parent-card-id> --child <child-card-id> --json
+```
+
+If `child add` fails after starting its POST, inspect either card or ask the
+user before trying again because the relation might already have been created.
 
 To create a card after confirming its destination and fields:
 

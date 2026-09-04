@@ -107,6 +107,8 @@ kten card update 12345 --custom-property 'Release Train=null' # clear it
 kten card member add 12345 --user 42
 kten card comment add 12345 --text "Ready for review"
 kten card comment add 12345 --text "Ready for review" --json
+kten card child add 12345 --child 67890
+kten card child remove 12345 --child 67890 --json
 kten card create --title "Fix login" --board 34 --column 56 --lane 78 --responsible 90 --json
 kten card context 12345 --comments-limit 20
 kten card comments 12345 --limit 10 --json
@@ -146,8 +148,8 @@ roles, tags, card types, custom properties, checklists, files, time logs,
 service desks, automations, audit logs, webhooks, and other product areas.
 
 `kten` intentionally exposes only a focused subset. Card creation, card updates,
-adding card members, and adding comments are its supported write operations;
-all other commands are read-only:
+card hierarchy changes, adding card members, and adding comments are its
+supported write operations; all other commands are read-only:
 
 | `kten` feature | Kaiten API request |
 | --- | --- |
@@ -158,6 +160,8 @@ all other commands are read-only:
 | Card description, priority, Size, and custom property updates | `PATCH /cards/{card_id}` |
 | Add card member | `POST /cards/{card_id}/members` |
 | Add card comment | `POST /cards/{card_id}/comments` |
+| Add child relation | `POST /cards/{parent_card_id}/children` |
+| Remove child relation | `DELETE /cards/{parent_card_id}/children/{child_card_id}` |
 | Card search | `GET /cards` |
 | My cards | `GET /users/current` and `GET /cards` |
 | Card context | `GET /cards/{card_id}` and `GET /cards/{card_id}/comments` |
@@ -175,6 +179,12 @@ at least one non-whitespace character. It sends one POST with a JSON body of
 `{"text":"..."}` and returns the created comment. A failed POST is not retried
 automatically because the comment might already have been created and a retry
 could add a duplicate.
+
+`kten card view` and `kten card context` show every parent and child returned by
+Kaiten. Use `kten card child add <parent-card-id> --child <child-card-id>` to
+create a relation and `kten card child remove <parent-card-id> --child
+<child-card-id>` to remove it. IDs must be positive and different. A failed add
+POST is not retried automatically because the relation might already exist.
 
 `kten card update <card-id> --story-points <number>` resolves the active custom
 number property named exactly `Story Point` and updates it through Kaiten's
@@ -340,10 +350,11 @@ The release workflow rejects a `vX.Y.Z` tag when it does not match the
 `kten-cli` package version. Published tags must not be moved; release a new
 patch version instead.
 
-Card creation, card updates, adding card members, and adding comments are the
-supported Kaiten write operations. `kten` does not automatically retry mutation
-requests. This is especially important for card creation and comment addition,
-where a retry could create a duplicate.
+Card creation, card updates, card hierarchy changes, adding card members, and
+adding comments are the supported Kaiten write operations. `kten` does not
+automatically retry mutation requests. This is especially important for card
+creation, child relation creation, and comment addition, where retrying an
+uncertain result can duplicate or conflict with the first operation.
 It has no telemetry and no crates.io publishing configuration.
 
 ## License

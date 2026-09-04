@@ -28,6 +28,27 @@ pub struct Card {
     pub column_id: Option<u64>,
     #[serde(default)]
     pub lane_id: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parents: Option<Vec<RelatedCard>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<RelatedCard>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RelatedCard {
+    pub id: u64,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub state: Option<u8>,
+    #[serde(default)]
+    pub archived: Option<bool>,
+    #[serde(default)]
+    pub board_id: Option<u64>,
+    #[serde(default)]
+    pub column_id: Option<u64>,
+    #[serde(default)]
+    pub lane_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,6 +100,16 @@ pub struct CustomProperty {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AddCardMemberRequest {
     pub user_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AddCardChildRequest {
+    pub card_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RemoveCardChildResponse {
+    pub id: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

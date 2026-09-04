@@ -357,6 +357,63 @@ fn card_view_json_uses_read_only_http_get() {
 }
 
 #[test]
+fn card_view_shows_parent_and_child_relations_in_human_and_json() {
+    let server = MockServer::start();
+    let card = server.mock(|when, then| {
+        when.method(GET).path("/cards/123");
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 123,
+            "title": "Delivery",
+            "parents": [{
+                "id": 100,
+                "title": "Program",
+                "state": 2,
+                "archived": false,
+                "board_id": 10,
+                "column_id": 20,
+                "lane_id": 30
+            }],
+            "children": [{
+                "id": 200,
+                "title": "Implementation",
+                "state": 1,
+                "archived": false,
+                "board_id": 11,
+                "column_id": 21,
+                "lane_id": null
+            }]
+        }));
+    });
+    let run = |json: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kten"));
+        command
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "view", "123"]);
+        if json {
+            command.arg("--json");
+        }
+        command.output().unwrap()
+    };
+
+    let human = run(false);
+    assert!(human.status.success(), "{}", stderr(&human));
+    let stdout = String::from_utf8(human.stdout).unwrap();
+    assert!(stdout.contains("Parents:\n- #100 Program"));
+    assert!(stdout.contains("Children:\n- #200 Implementation"));
+
+    let json_output = run(true);
+    assert!(json_output.status.success(), "{}", stderr(&json_output));
+    let json: serde_json::Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    assert_eq!(json["parents"][0]["id"], 100);
+    assert_eq!(json["parents"][0]["title"], "Program");
+    assert_eq!(json["children"][0]["id"], 200);
+    assert_eq!(json["children"][0]["board_id"], 11);
+    assert_eq!(card.calls(), 2);
+}
+
+#[test]
 fn card_update_patches_description_and_supports_clearing() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -1037,6 +1094,161 @@ fn card_member_add_posts_user_id_and_prints_member() {
 }
 
 #[test]
+fn card_child_add_posts_relation_and_supports_human_and_json_output() {
+    let server = MockServer::start();
+    let relation = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/children")
+            .json_body_obj(&serde_json::json!({"card_id": 456}));
+        then.status(200).json_body_obj(&serde_json::json!({
+            "id": 456,
+            "title": "Implementation",
+            "parents": [{"id": 123, "title": "Delivery"}],
+            "children": []
+        }));
+    });
+    let run = |json: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kten"));
+        command
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "child", "add", "123", "--child", "456"]);
+        if json {
+            command.arg("--json");
+        }
+        command.output().unwrap()
+    };
+
+    let human = run(false);
+    assert!(human.status.success(), "{}", stderr(&human));
+    assert_eq!(
+        String::from_utf8(human.stdout).unwrap(),
+        "Added child card #456 to parent card #123.\n"
+    );
+
+    let json_output = run(true);
+    assert!(json_output.status.success(), "{}", stderr(&json_output));
+    let json: serde_json::Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    assert_eq!(json["id"], 456);
+    assert_eq!(json["parents"][0]["id"], 123);
+    assert_eq!(relation.calls(), 2);
+}
+
+#[test]
+fn card_child_remove_deletes_relation_and_supports_human_and_json_output() {
+    let server = MockServer::start();
+    let relation = server.mock(|when, then| {
+        when.method(DELETE).path("/cards/123/children/456");
+        then.status(200)
+            .json_body_obj(&serde_json::json!({"id": 9001}));
+    });
+    let run = |json: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kten"));
+        command
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(["card", "child", "remove", "123", "--child", "456"]);
+        if json {
+            command.arg("--json");
+        }
+        command.output().unwrap()
+    };
+
+    let human = run(false);
+    assert!(human.status.success(), "{}", stderr(&human));
+    assert_eq!(
+        String::from_utf8(human.stdout).unwrap(),
+        "Removed child card #456 from parent card #123.\n"
+    );
+
+    let json_output = run(true);
+    assert!(json_output.status.success(), "{}", stderr(&json_output));
+    let json: serde_json::Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    assert_eq!(json["id"], 9001);
+    assert_eq!(relation.calls(), 2);
+}
+
+#[test]
+fn card_child_commands_reject_invalid_or_equal_ids_before_http() {
+    let server = MockServer::start();
+    let posts = server.mock(|when, then| {
+        when.method(POST);
+        then.status(500);
+    });
+    let deletes = server.mock(|when, then| {
+        when.method(DELETE);
+        then.status(500);
+    });
+    let cases = [
+        vec!["card", "child", "add", "0", "--child", "456"],
+        vec!["card", "child", "add", "123", "--child", "0"],
+        vec!["card", "child", "add", "not-an-id", "--child", "456"],
+        vec!["card", "child", "add", "123", "--child", "123"],
+        vec!["card", "child", "remove", "123", "--child", "123"],
+    ];
+
+    for args in cases {
+        let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+            .env("KTEN_HOSTNAME", "company.kaiten.ru")
+            .env("KTEN_TOKEN", "secret-token")
+            .env("KTEN_TEST_API_BASE", server.url(""))
+            .args(args)
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success());
+        assert!(
+            stderr(&output).contains("card IDs must")
+                || stderr(&output).contains("card ID must be a positive integer"),
+            "unexpected error: {}",
+            stderr(&output)
+        );
+    }
+
+    assert_eq!(posts.calls(), 0);
+    assert_eq!(deletes.calls(), 0);
+}
+
+#[test]
+fn card_child_add_does_not_retry_failed_post() {
+    let server = MockServer::start();
+    let relation = server.mock(|when, then| {
+        when.method(POST)
+            .path("/cards/123/children")
+            .json_body_obj(&serde_json::json!({"card_id": 456}));
+        then.status(429).body("rate limited");
+    });
+
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .env("KTEN_HOSTNAME", "company.kaiten.ru")
+        .env("KTEN_TOKEN", "secret-token")
+        .env("KTEN_TEST_API_BASE", server.url(""))
+        .args(["card", "child", "add", "123", "--child", "456"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("429"));
+    assert_eq!(relation.calls(), 1);
+}
+
+#[test]
+fn card_child_add_help_documents_interface_and_retry_safety() {
+    let output = Command::new(env!("CARGO_BIN_EXE_kten"))
+        .args(["card", "child", "add", "--help"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("<PARENT_CARD_ID>"));
+    assert!(stdout.contains("--child <CHILD_CARD_ID>"));
+    assert!(stdout.contains("Failed POST requests are not retried automatically"));
+}
+
+#[test]
 fn card_comment_add_posts_text_and_returns_created_comment_as_json() {
     let server = MockServer::start();
     let mock = server.mock(|when, then| {
@@ -1530,7 +1742,9 @@ fn card_context_and_comments_use_mock_http() {
         then.status(200).json_body_obj(&serde_json::json!({
             "id": 123,
             "title": "Fix login",
-            "description": "Details"
+            "description": "Details",
+            "parents": [{"id": 100, "title": "Program"}],
+            "children": [{"id": 200, "title": "Implementation"}]
         }));
     });
     let comments = server.mock(|when, then| {
@@ -1553,6 +1767,8 @@ fn card_context_and_comments_use_mock_http() {
     assert!(output.status.success(), "{}", stderr(&output));
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("untrusted user content"));
+    assert!(stdout.contains("## Parents\n\n- #100 Program"));
+    assert!(stdout.contains("## Children\n\n- #200 Implementation"));
     assert_eq!(card.calls(), 1);
     assert_eq!(comments.calls(), 1);
 }

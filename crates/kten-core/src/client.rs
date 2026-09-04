@@ -9,9 +9,10 @@ use crate::{
     config::EffectiveConfig,
     limits::{LimitKind, Limits},
     models::{
-        AddCardMemberRequest, AddCommentRequest, Board, BoardStructure, Card, CardContext,
-        CardMember, Column, Comment, CreateCardRequest, CurrentUser, CustomProperty, Lane,
-        MineCard, MineCardsFilters, SearchFilters, Space, UpdateCardRequest,
+        AddCardChildRequest, AddCardMemberRequest, AddCommentRequest, Board, BoardStructure, Card,
+        CardContext, CardMember, Column, Comment, CreateCardRequest, CurrentUser, CustomProperty,
+        Lane, MineCard, MineCardsFilters, RemoveCardChildResponse, SearchFilters, Space,
+        UpdateCardRequest,
     },
 };
 
@@ -107,6 +108,23 @@ impl KaitenClient {
             &AddCardMemberRequest { user_id },
         )
         .await
+    }
+
+    pub async fn add_card_child(&self, parent_id: u64, child_id: u64) -> Result<Card> {
+        self.post_json(
+            &format!("cards/{parent_id}/children"),
+            &AddCardChildRequest { card_id: child_id },
+        )
+        .await
+    }
+
+    pub async fn remove_card_child(
+        &self,
+        parent_id: u64,
+        child_id: u64,
+    ) -> Result<RemoveCardChildResponse> {
+        self.delete_json(&format!("cards/{parent_id}/children/{child_id}"))
+            .await
     }
 
     pub async fn add_comment(&self, card_id: u64, request: &AddCommentRequest) -> Result<Comment> {
@@ -293,6 +311,26 @@ impl KaitenClient {
             .patch(url)
             .bearer_auth(&self.config.token)
             .json(body)
+            .send()
+            .await?;
+        if response.status().is_success() {
+            Ok(response.json().await?)
+        } else {
+            Err(api_error(response).await)
+        }
+    }
+
+    async fn delete_json<T>(&self, path: &str) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let url = self.url(path, &[])?;
+        let _permit = self.throttle.lock().await;
+        tokio::time::sleep(Duration::from_millis(210)).await;
+        let response = self
+            .mutation_http
+            .delete(url)
+            .bearer_auth(&self.config.token)
             .send()
             .await?;
         if response.status().is_success() {
@@ -572,6 +610,8 @@ mod tests {
                 board_id: Some(20),
                 column_id: None,
                 lane_id: None,
+                parents: None,
+                children: None,
             }]);
         });
 
